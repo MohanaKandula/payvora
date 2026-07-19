@@ -229,7 +229,7 @@ public class TreasuryController {
         return ResponseEntity.ok(treasuryService.runStressTest());
     }
 
-    @GetMapping("/exposure")
+    @GetMapping({"/exposure", "/compliance"})
     public ResponseEntity<Map<String, Object>> checkCompliance() {
         return ResponseEntity.ok(treasuryService.calculateExposure());
     }
