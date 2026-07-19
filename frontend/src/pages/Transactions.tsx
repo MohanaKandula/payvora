@@ -311,12 +311,28 @@ export const Transactions: React.FC = () => {
   
   const [toastMsg, setToastMsg] = useState('');
   const [ticketRaised, setTicketRaised] = useState(false);
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
 
-  // Extract accountId from localStorage
+  // Extract accountId and check admin role from localStorage
   useEffect(() => {
     const storedId = localStorage.getItem('accountId');
     if (storedId) {
       setAccountId(storedId);
+    }
+    const token = localStorage.getItem('accessToken');
+    if (token) {
+      try {
+        const payloadBase64 = token.split('.')[1];
+        const payloadJson = atob(payloadBase64);
+        const payload = JSON.parse(payloadJson);
+        const tokenRole = payload.role;
+        const tokenRoles: string[] = Array.isArray(payload.roles) ? payload.roles : [];
+        const isUserAdmin = tokenRole === 'ROLE_ADMIN' || tokenRole === 'ADMIN' || 
+                            tokenRoles.includes('ROLE_ADMIN') || tokenRoles.includes('ADMIN');
+        setIsAdmin(isUserAdmin);
+      } catch (e) {
+        console.error('Failed to parse token for admin check', e);
+      }
     }
   }, []);
 
@@ -585,7 +601,7 @@ export const Transactions: React.FC = () => {
           </h3>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className={`grid grid-cols-2 ${isAdmin ? 'md:grid-cols-4' : 'md:grid-cols-5'} gap-4`}>
           <div className="p-4 rounded-2xl bg-black/20 border border-white/5 space-y-1">
             <span className="text-[9px] uppercase font-bold text-gray-500 tracking-wider block">Total Transactions</span>
             <p className="text-xl font-black text-white font-mono mt-1">{monthTxCount}</p>
@@ -604,11 +620,13 @@ export const Transactions: React.FC = () => {
             <span className="text-[8px] text-gray-500 block">Inbound transfers, deposits, redemptions</span>
           </div>
 
-          <div className="p-4 rounded-2xl bg-black/20 border border-white/5 space-y-1">
-            <span className="text-[9px] uppercase font-bold text-violet-400 tracking-wider block">Interest Earned</span>
-            <p className="text-xl font-black text-violet-400 font-mono mt-1">${monthInterest.toFixed(2)}</p>
-            <span className="text-[8px] text-gray-500 block">{(vaultAccount?.apyRate || 4.50).toFixed(2)}% APY neobank savings yield</span>
-          </div>
+          {!isAdmin && (
+            <div className="p-4 rounded-2xl bg-black/20 border border-white/5 space-y-1">
+              <span className="text-[9px] uppercase font-bold text-violet-400 tracking-wider block">Interest Earned</span>
+              <p className="text-xl font-black text-violet-400 font-mono mt-1">${monthInterest.toFixed(2)}</p>
+              <span className="text-[8px] text-gray-500 block">{(vaultAccount?.apyRate || 4.50).toFixed(2)}% APY neobank savings yield</span>
+            </div>
+          )}
 
           <div className="p-4 rounded-2xl bg-black/20 border border-white/5 space-y-1 col-span-2 md:col-span-1">
             <span className="text-[9px] uppercase font-bold text-amber-400 tracking-wider block">Rewards Earned</span>
