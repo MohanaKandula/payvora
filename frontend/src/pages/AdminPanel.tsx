@@ -3337,7 +3337,7 @@ export const AdminPanel: React.FC = () => {
           
           {/* Summary Cards Grid */}
           {(() => {
-            const today = new Date().toISOString().substring(0, 10);
+            const today = new Date().toLocaleDateString('sv').substring(0, 10);
             
             const todayTransactions = treasuryHistory?.filter(t => t.createdAt && t.createdAt.substring(0, 10) === today) || [];
             
