@@ -114,10 +114,21 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     }
   }, []);
 
-  const handleLogout = () => {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
-    navigate('/login');
+  const handleLogout = async () => {
+    try {
+      const storedAccountId = localStorage.getItem('accountId');
+      if (storedAccountId) {
+        await axiosInstance.post('/api/transactions/investments/accrue-logout', {
+          accountId: storedAccountId
+        });
+      }
+    } catch (e) {
+      console.error('Failed to accrue yield on logout', e);
+    } finally {
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      navigate('/login');
+    }
   };
 
   const menuItems = [];

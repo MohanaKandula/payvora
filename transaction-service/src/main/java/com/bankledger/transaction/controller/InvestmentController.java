@@ -94,6 +94,16 @@ public class InvestmentController {
         return ResponseEntity.ok(response);
     }
 
+    @PostMapping("/accrue-logout")
+    public ResponseEntity<Map<String, Object>> accrueLogout(@RequestBody Map<String, Object> request) {
+        UUID accountId = UUID.fromString(request.get("accountId").toString());
+        yieldEngine.accrueYieldForUser(accountId);
+        Map<String, Object> response = new java.util.HashMap<>();
+        response.put("success", true);
+        response.put("message", "Accrued interest yield successfully for user: " + accountId);
+        return ResponseEntity.ok(response);
+    }
+
     @GetMapping("/admin/vault-accounts")
     public ResponseEntity<List<InvestmentAccount>> getAllVaultAccounts() {
         // Fetch all user investment accounts (vault accounts)
