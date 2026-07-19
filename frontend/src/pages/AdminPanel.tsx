@@ -905,329 +905,228 @@ export const AdminPanel: React.FC = () => {
       </div>
 
       {/* CONDITIONAL RENDER BY ACTIVE TAB */}
-      {activeTab === 'overview' && adminStats && (
-        <div className="space-y-8 animate-fade-in">
-          {/* Reconciliation & Compliance Warnings */}
-          {reconciliation && !reconciliation.balanced && (
-            <div className="p-5 rounded-3xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex gap-4 animate-pulse">
-              <AlertCircle className="h-6 w-6 shrink-0 text-rose-400 mt-0.5" />
-              <div className="space-y-1.5 w-full">
-                <p className="font-black uppercase tracking-wider text-[10px] text-rose-400 flex items-center gap-1.5">
-                  ⚠ Reconciliation Issue Detected (Status: {reconciliation.treasuryStatus || 'CRITICAL'})
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-1.5 text-gray-300 font-mono text-[11px] pt-1">
-                  <p>
-                    Difference: <span className="font-bold text-white">${(reconciliation.difference || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+      {activeTab === 'overview' && adminStats && (() => {
+        const cashbackBal = systemWallets?.find(w => w.id === 'e1b07221-50e5-4d76-bc34-31f41e57c605')?.runningBalance || 0;
+        const yieldReserveBal = systemWallets?.find(w => w.id === 'e1b07221-50e5-4d76-bc34-31f41e57c603')?.runningBalance || 0;
+        const platformRevenueBal = systemWallets?.find(w => w.id === 'e1b07221-50e5-4d76-bc34-31f41e57c602')?.runningBalance || 0;
+        const ownerTreasuryBal = systemWallets?.find(w => w.id === 'e1b07221-50e5-4d76-bc34-31f41e57c601')?.runningBalance || 0;
+
+        const totalUserVaultAssets = vaultAccounts?.reduce((sum, acc) => sum + (acc.investedBalance || 0), 0) || adminStats?.totalAum || 0;
+        const totalActiveVaultUsers = vaultAccounts?.filter(acc => acc.investedBalance > 0).length || adminStats?.accountsCount || 0;
+        const todayInterestObligation = vaultAccounts?.reduce((sum, acc) => {
+          const balance = acc.investedBalance || 0;
+          const apy = acc.apyRate || 4.50;
+          return sum + ((balance * (apy / 100)) / 365);
+        }, 0) || 0;
+
+        const calculatedObligation = todayInterestObligation > 0 
+          ? todayInterestObligation 
+          : (totalUserVaultAssets * ((adminStats?.apyRate || 4.50) / 100)) / 365;
+
+        const coverageDays = calculatedObligation > 0 ? Math.floor(yieldReserveBal / calculatedObligation) : 9999;
+
+        const alerts: string[] = [];
+        if (cashbackBal <= 0) {
+          alerts.push("Cashback Wallet is fully exhausted. Reward distributions are suspended!");
+        } else if (cashbackBal < 100) {
+          alerts.push(`Cashback Wallet is running low ($${cashbackBal.toFixed(2)}). Warning threshold is $100. Please top up.`);
+        }
+
+        if (yieldReserveBal <= 0) {
+          alerts.push("Yield Reserve Wallet is exhausted. Vault and APY interest payouts are suspended!");
+        } else if (yieldReserveBal < 1000) {
+          alerts.push(`Yield Reserve Wallet is running low ($${yieldReserveBal.toFixed(2)}). Warning threshold is $1,000. Please top up.`);
+        }
+
+        if (ownerTreasuryBal <= 0) {
+          alerts.push("Owner Treasury Wallet is fully depleted. System liquidity coverage is compromised!");
+        } else if (ownerTreasuryBal < 2000) {
+          alerts.push(`Owner Treasury Wallet is running low ($${ownerTreasuryBal.toFixed(2)}). Warning threshold is $2,000. Please top up.`);
+        }
+
+        return (
+          <div className="space-y-8 animate-fade-in">
+            {/* Reconciliation & Compliance Warnings */}
+            {reconciliation && !reconciliation.balanced && (
+              <div className="p-5 rounded-3xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex gap-4 animate-pulse">
+                <AlertCircle className="h-6 w-6 shrink-0 text-rose-400 mt-0.5" />
+                <div className="space-y-1.5 w-full">
+                  <p className="font-black uppercase tracking-wider text-[10px] text-rose-400 flex items-center gap-1.5">
+                    ⚠ Reconciliation Issue Detected (Status: {reconciliation.treasuryStatus || 'CRITICAL'})
                   </p>
-                  <p>
-                    Category: <span className="font-bold text-white">{reconciliation.category || 'N/A'}</span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-1.5 text-gray-300 font-mono text-[11px] pt-1">
+                    <p>
+                      Difference: <span className="font-bold text-white">${(reconciliation.difference || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </p>
+                    <p>
+                      Category: <span className="font-bold text-white">{reconciliation.category || 'N/A'}</span>
+                    </p>
+                    <p className="md:col-span-2">
+                      Affected Transaction: <span className="font-bold text-white">{reconciliation.affectedTransactionId || 'N/A'}</span>
+                    </p>
+                    <p className="md:col-span-2">
+                      Affected Flow: <span className="font-bold text-white">{reconciliation.affectedDebitAccount || 'Unknown'} &rarr; {reconciliation.affectedCreditAccount || 'Unknown'}</span>
+                    </p>
+                    <p>
+                      Missing Leg: <span className="font-bold text-rose-300">{reconciliation.missingEntryType || 'Unknown'} Entry</span>
+                    </p>
+                    <p>
+                      Last Validated: <span className="font-bold text-gray-400">{reconciliation.lastValidatedAt ? new Date(reconciliation.lastValidatedAt).toLocaleString() : 'N/A'}</span>
+                    </p>
+                  </div>
+                  <p className="text-gray-400 text-[10px] pt-1">
+                    Recommended Action: <span className="text-rose-300">{reconciliation.recommendation || 'Inspect recent deposit/withdrawal ledger logs.'}</span>
                   </p>
-                  <p className="md:col-span-2">
-                    Affected Transaction: <span className="font-bold text-white">{reconciliation.affectedTransactionId || 'N/A'}</span>
-                  </p>
-                  <p className="md:col-span-2">
-                    Affected Flow: <span className="font-bold text-white">{reconciliation.affectedDebitAccount || 'Unknown'} &rarr; {reconciliation.affectedCreditAccount || 'Unknown'}</span>
-                  </p>
-                  <p>
-                    Missing Leg: <span className="font-bold text-rose-300">{reconciliation.missingEntryType || 'Unknown'} Entry</span>
-                  </p>
-                  <p>
-                    Last Validated: <span className="font-bold text-gray-400">{reconciliation.lastValidatedAt ? new Date(reconciliation.lastValidatedAt).toLocaleString() : 'N/A'}</span>
+                  <p className="text-rose-300 font-semibold text-[10px] uppercase tracking-wide mt-2">
+                    Status: Treasury distributions and rewards paused until balanced.
                   </p>
                 </div>
-                <p className="text-gray-400 text-[10px] pt-1">
-                  Recommended Action: <span className="text-rose-300">{reconciliation.recommendation || 'Inspect recent deposit/withdrawal ledger logs.'}</span>
-                </p>
-                <p className="text-rose-300 font-semibold text-[10px] uppercase tracking-wide mt-2">
-                  Status: Treasury distributions and rewards paused until balanced.
-                </p>
               </div>
-            </div>
-          )}
-          {compliance && compliance.violations && compliance.violations.length > 0 && (
-            <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs flex flex-col gap-1.5">
-              <div className="flex items-center gap-2">
-                <ShieldAlert className="h-4.5 w-4.5 text-amber-400" />
-                <span className="font-bold uppercase tracking-wider text-[10px]">Exposure Risk & Concentration Warnings</span>
+            )}
+            
+            {compliance && compliance.violations && compliance.violations.length > 0 && (
+              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs flex flex-col gap-1.5">
+                <div className="flex items-center gap-2">
+                  <ShieldAlert className="h-4.5 w-4.5 text-amber-400" />
+                  <span className="font-bold uppercase tracking-wider text-[10px]">Exposure Risk & Concentration Warnings</span>
+                </div>
+                <ul className="list-disc list-inside text-gray-400 space-y-0.5 pl-1">
+                  {compliance.violations.map((violation: string, idx: number) => (
+                    <li key={idx}>{violation}</li>
+                  ))}
+                </ul>
               </div>
-              <ul className="list-disc list-inside text-gray-400 space-y-0.5 pl-1">
-                {compliance.violations.map((violation: string, idx: number) => (
-                  <li key={idx}>{violation}</li>
-                ))}
-              </ul>
-            </div>
-          )}
+            )}
 
-          {(() => {
-            const cashbackBal = systemWallets?.find(w => w.id === 'e1b07221-50e5-4d76-bc34-31f41e57c605')?.runningBalance || 0;
-            const yieldReserveBal = systemWallets?.find(w => w.id === 'e1b07221-50e5-4d76-bc34-31f41e57c603')?.runningBalance || 0;
-            const platformRevenueBal = systemWallets?.find(w => w.id === 'e1b07221-50e5-4d76-bc34-31f41e57c602')?.runningBalance || 0;
-            const ownerTreasuryBal = systemWallets?.find(w => w.id === 'e1b07221-50e5-4d76-bc34-31f41e57c601')?.runningBalance || 0;
+            {alerts.length > 0 && (
+              <div className="p-4 rounded-2xl bg-[#523311]/20 border border-[#b27218]/30 text-amber-450 text-xs flex flex-col gap-1.5">
+                <div className="flex items-center gap-2">
+                  <ShieldAlert className="h-4.5 w-4.5 text-amber-500" />
+                  <span className="font-bold uppercase tracking-wider text-[10px] text-white">System Wallet Funding Warnings</span>
+                </div>
+                <ul className="list-disc list-inside text-gray-300 space-y-0.5 pl-1">
+                  {alerts.map((alert, idx) => (
+                    <li key={idx}>{alert}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
-            const totalUserVaultAssets = vaultAccounts?.reduce((sum, acc) => sum + (acc.investedBalance || 0), 0) || adminStats?.totalAum || 0;
-            const totalActiveVaultUsers = vaultAccounts?.filter(acc => acc.investedBalance > 0).length || adminStats?.accountsCount || 0;
-            const todayInterestObligation = vaultAccounts?.reduce((sum, acc) => {
-              const balance = acc.investedBalance || 0;
-              const apy = acc.apyRate || 4.50;
-              return sum + ((balance * (apy / 100)) / 365);
-            }, 0) || 0;
-
-            const calculatedObligation = todayInterestObligation > 0 
-              ? todayInterestObligation 
-              : (totalUserVaultAssets * ((adminStats?.apyRate || 4.50) / 100)) / 365;
-
-            const coverageDays = calculatedObligation > 0 ? Math.floor(yieldReserveBal / calculatedObligation) : 9999;
-
-            let fundingStatus: 'Healthy' | 'Warning' | 'Critical' = 'Healthy';
-            const alerts: string[] = [];
-
-            if (cashbackBal <= 0 || yieldReserveBal <= 0 || ownerTreasuryBal <= 0) {
-              fundingStatus = 'Critical';
-            } else if (cashbackBal < 100 || yieldReserveBal < 1000 || ownerTreasuryBal < 2000) {
-              fundingStatus = 'Warning';
-            }
-
-            if (cashbackBal <= 0) {
-              alerts.push("Cashback Wallet is fully exhausted. Reward distributions are suspended!");
-            } else if (cashbackBal < 100) {
-              alerts.push(`Cashback Wallet is running low ($${cashbackBal.toFixed(2)}). Warning threshold is $100. Please top up.`);
-            }
-
-            if (yieldReserveBal <= 0) {
-              alerts.push("Yield Reserve Wallet is exhausted. Vault and APY interest payouts are suspended!");
-            } else if (yieldReserveBal < 1000) {
-              alerts.push(`Yield Reserve Wallet is running low ($${yieldReserveBal.toFixed(2)}). Warning threshold is $1,000. Please top up.`);
-            }
-
-            if (ownerTreasuryBal <= 0) {
-              alerts.push("Owner Treasury Wallet is fully depleted. System liquidity coverage is compromised!");
-            } else if (ownerTreasuryBal < 2000) {
-              alerts.push(`Owner Treasury Wallet is running low ($${ownerTreasuryBal.toFixed(2)}). Warning threshold is $2,000. Please top up.`);
-            }
-
-            return (
-              <div className="space-y-6">
-                {/* 1. Treasury Funding Status Card */}
-                <div className="glass-panel p-6 rounded-3xl border border-white/5 bg-gradient-to-br from-[#111118] via-[#0b0b10] to-[#08080c] shadow-2xl relative overflow-hidden">
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-violet-600/5 rounded-full blur-3xl" />
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-white/5 mb-6">
-                    <div>
-                      <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
-                        <Coins className="h-4.5 w-4.5 text-violet-400" />
-                        Treasury Funding Status
-                      </h3>
-                      <p className="text-[10px] text-gray-400 mt-0.5">Real-time solvency check of neobank system-wide funding pools</p>
-                    </div>
-                    <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border ${
-                      fundingStatus === 'Healthy' 
-                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
-                        : fundingStatus === 'Warning'
+            <div className="space-y-6">
+              {/* Yield Funding Coverage & Vault Statistics */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Yield Funding Coverage Card */}
+                <div className="glass-panel p-6 rounded-3xl border border-white/5 bg-gradient-to-br from-[#111118] via-[#0b0b10] to-[#08080c] shadow-xl relative overflow-hidden">
+                  <div className="flex justify-between items-center pb-3 border-b border-white/5 mb-4">
+                    <h4 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-2">
+                      <Percent className="h-4 w-4 text-emerald-400" />
+                      Yield Funding Coverage
+                    </h4>
+                    <span className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full border ${
+                      coverageDays >= 100
+                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                        : coverageDays >= 30
                           ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
                           : 'bg-rose-500/10 text-rose-400 border-rose-500/20 animate-pulse'
                     }`}>
-                      Status: {fundingStatus}
+                      {coverageDays >= 100 ? '🟢 Healthy' : coverageDays >= 30 ? '🟡 Warning' : '🔴 Critical'}
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
-                    {/* Cashback Wallet */}
-                    <div className="p-4 rounded-2xl bg-white/[0.01] border border-white/5">
-                      <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider block">Cashback Wallet</span>
-                      <p className={`text-xl font-black font-mono mt-1 ${cashbackBal < 100 ? 'text-amber-400' : 'text-white'}`}>
-                        ${cashbackBal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </p>
-                      <div className="w-full h-1.5 rounded-full bg-white/5 overflow-hidden mt-3">
-                        <div 
-                          className={`h-full rounded-full ${cashbackBal < 100 ? 'bg-amber-500' : 'bg-violet-500'}`} 
-                          style={{ width: `${Math.min(100, (cashbackBal / 500) * 100)}%` }}
-                        />
-                      </div>
-                      <div className="flex justify-between items-center text-[8px] text-gray-500 font-bold mt-1.5">
-                        <span>Target: $500</span>
-                        <span>Limit: $100</span>
-                      </div>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-gray-400">Total User Vault Assets</span>
+                      <span className="font-mono font-bold text-white">${totalUserVaultAssets.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
-
-                    {/* Yield Reserve */}
-                    <div className="p-4 rounded-2xl bg-white/[0.01] border border-white/5">
-                      <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider block">Yield Reserve</span>
-                      <p className={`text-xl font-black font-mono mt-1 ${yieldReserveBal < 1000 ? 'text-amber-400' : 'text-white'}`}>
-                        ${yieldReserveBal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </p>
-                      <div className="w-full h-1.5 rounded-full bg-white/5 overflow-hidden mt-3">
-                        <div 
-                          className={`h-full rounded-full ${yieldReserveBal < 1000 ? 'bg-amber-500' : 'bg-emerald-500'}`} 
-                          style={{ width: `${Math.min(100, (yieldReserveBal / 4999) * 100)}%` }}
-                        />
-                      </div>
-                      <div className="flex justify-between items-center text-[8px] text-gray-500 font-bold mt-1.5">
-                        <span>Target: $4,999</span>
-                        <span>Limit: $1,000</span>
-                      </div>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-gray-400">Total Active Vault Users</span>
+                      <span className="font-mono font-bold text-white">{totalActiveVaultUsers}</span>
                     </div>
-
-                    {/* Platform Revenue */}
-                    <div className="p-4 rounded-2xl bg-white/[0.01] border border-white/5">
-                      <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider block">Platform Revenue</span>
-                      <p className="text-xl font-black text-white font-mono mt-1">
-                        ${platformRevenueBal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </p>
-                      <div className="w-full h-1.5 rounded-full bg-white/5 overflow-hidden mt-3">
-                        <div 
-                          className="h-full rounded-full bg-blue-500" 
-                          style={{ width: `${Math.min(100, (platformRevenueBal / 250) * 100)}%` }}
-                        />
-                      </div>
-                      <div className="flex justify-between items-center text-[8px] text-gray-500 font-bold mt-1.5">
-                        <span>Target: $250</span>
-                        <span>Limit: $0</span>
-                      </div>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-gray-400">Interest Obligation Today</span>
+                      <span className="font-mono font-bold text-rose-400">${calculatedObligation.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span>
                     </div>
-
-                    {/* Owner Treasury */}
-                    <div className="p-4 rounded-2xl bg-white/[0.01] border border-white/5">
-                      <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider block">Owner Treasury</span>
-                      <p className={`text-xl font-black font-mono mt-1 ${ownerTreasuryBal < 2000 ? 'text-amber-400' : 'text-white'}`}>
-                        ${ownerTreasuryBal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </p>
-                      <div className="w-full h-1.5 rounded-full bg-white/5 overflow-hidden mt-3">
-                        <div 
-                          className={`h-full rounded-full ${ownerTreasuryBal < 2000 ? 'bg-amber-500' : 'bg-fuchsia-500'}`} 
-                          style={{ width: `${Math.min(100, (ownerTreasuryBal / 10000) * 100)}%` }}
-                        />
-                      </div>
-                      <div className="flex justify-between items-center text-[8px] text-gray-500 font-bold mt-1.5">
-                        <span>Target: $10,000</span>
-                        <span>Limit: $2,000</span>
-                      </div>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-gray-400">Yield Reserve Balance</span>
+                      <span className="font-mono font-bold text-emerald-400">${yieldReserveBal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
-                  </div>
-
-                  {alerts.length > 0 && (
-                    <div className="mt-6 p-4 rounded-2xl bg-amber-500/5 border border-amber-500/10 space-y-2">
-                      {alerts.map((alert, idx) => (
-                        <div key={idx} className="flex items-start gap-2.5 text-xs text-amber-400 font-semibold leading-relaxed">
-                          <ShieldAlert className="h-4.5 w-4.5 shrink-0 text-amber-500 mt-0.5" />
-                          <span>{alert}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* 2. Yield Funding Coverage & Vault Statistics */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* Yield Funding Coverage Card */}
-                  <div className="glass-panel p-6 rounded-3xl border border-white/5 bg-gradient-to-br from-[#111118] via-[#0b0b10] to-[#08080c] shadow-xl relative overflow-hidden">
-                    <div className="flex justify-between items-center pb-3 border-b border-white/5 mb-4">
-                      <h4 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-2">
-                        <Percent className="h-4 w-4 text-emerald-400" />
-                        Yield Funding Coverage
-                      </h4>
-                      <span className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full border ${
-                        coverageDays >= 100
-                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                          : coverageDays >= 30
-                            ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                            : 'bg-rose-500/10 text-rose-400 border-rose-500/20 animate-pulse'
-                      }`}>
-                        {coverageDays >= 100 ? '🟢 Healthy' : coverageDays >= 30 ? '🟡 Warning' : '🔴 Critical'}
-                      </span>
-                    </div>
-
-                    <div className="space-y-3">
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-gray-400">Total User Vault Assets</span>
-                        <span className="font-mono font-bold text-white">${totalUserVaultAssets.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                      </div>
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-gray-400">Total Active Vault Users</span>
-                        <span className="font-mono font-bold text-white">{totalActiveVaultUsers}</span>
-                      </div>
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-gray-400">Interest Obligation Today</span>
-                        <span className="font-mono font-bold text-rose-400">${calculatedObligation.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span>
-                      </div>
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-gray-400">Yield Reserve Balance</span>
-                        <span className="font-mono font-bold text-emerald-400">${yieldReserveBal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                      </div>
-                      <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/5 flex justify-between items-center mt-2.5">
-                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Estimated Days of Coverage</span>
-                        <span className="font-mono font-black text-sm text-white">{coverageDays === 9999 ? '∞ Days' : `${coverageDays} Days`}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Vault Statistics Card */}
-                  <div className="glass-panel p-6 rounded-3xl border border-white/5 bg-gradient-to-br from-[#111118] via-[#0b0b10] to-[#08080c] shadow-xl relative overflow-hidden">
-                    <div className="flex justify-between items-center pb-3 border-b border-white/5 mb-4">
-                      <h4 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-2">
-                        <PieChart className="h-4 w-4 text-violet-400" />
-                        Vault Statistics
-                      </h4>
-                    </div>
-
-                    <div className="space-y-3.5">
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-gray-400">Active Vault Users</span>
-                        <span className="font-mono font-bold text-white">{totalActiveVaultUsers}</span>
-                      </div>
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-gray-400">Total Vault Deposits</span>
-                        <span className="font-mono font-bold text-white">${totalUserVaultAssets.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                      </div>
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-gray-400">Total Yield Distributed</span>
-                        <span className="font-mono font-bold text-white">${(adminStats?.totalYieldDistributed || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                      </div>
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-gray-400">Average Vault Balance</span>
-                        <span className="font-mono font-bold text-white">${(totalActiveVaultUsers > 0 ? totalUserVaultAssets / totalActiveVaultUsers : 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                      </div>
+                    <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/5 flex justify-between items-center mt-2.5">
+                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Estimated Days of Coverage</span>
+                      <span className="font-mono font-black text-sm text-white">{coverageDays === 9999 ? '∞ Days' : `${coverageDays} Days`}</span>
                     </div>
                   </div>
                 </div>
 
-                {/* 3. Treasury Money Flow */}
-                <div className="glass-panel p-6 rounded-3xl border border-white/5 bg-[#111118]/90 shadow-xl relative overflow-hidden">
-                  <h4 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-2 mb-4">
-                    <Layers className="h-4 w-4 text-indigo-400" />
-                    Treasury Money Flow
-                  </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-center text-xs">
-                    {/* Vault Interest Flow */}
-                    <div className="p-5 rounded-2xl bg-white/[0.01] border border-white/5 space-y-3">
-                      <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest block mb-2">Vault Interest Accrual Flow</span>
-                      <div className="flex flex-col items-center gap-1.5">
-                        <div className="px-3 py-1 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-white font-bold">Founder Capital</div>
-                        <span className="text-gray-500 font-bold text-base leading-none">↓</span>
-                        <div className="px-3 py-1 rounded-lg bg-violet-500/10 border border-violet-500/20 text-white font-bold">Owner Treasury</div>
-                        <span className="text-gray-500 font-bold text-base leading-none">↓</span>
-                        <div className="px-3 py-1 rounded-lg bg-purple-500/10 border border-purple-500/20 text-white font-bold">Investment Portfolio</div>
-                        <span className="text-gray-500 font-bold text-base leading-none">↓</span>
-                        <div className="px-3 py-1 rounded-lg bg-fuchsia-500/10 border border-fuchsia-500/20 text-white font-bold">Yield Reserve</div>
-                        <span className="text-gray-500 font-bold text-base leading-none">↓</span>
-                        <div className="px-4 py-1.5 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 font-black">User Vault Interest</div>
-                      </div>
-                    </div>
+                {/* Vault Statistics Card */}
+                <div className="glass-panel p-6 rounded-3xl border border-white/5 bg-gradient-to-br from-[#111118] via-[#0b0b10] to-[#08080c] shadow-xl relative overflow-hidden">
+                  <div className="flex justify-between items-center pb-3 border-b border-white/5 mb-4">
+                    <h4 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-2">
+                      <PieChart className="h-4 w-4 text-violet-400" />
+                      Vault Statistics
+                    </h4>
+                  </div>
 
-                    {/* Rewards & Promo Flow */}
-                    <div className="p-5 rounded-2xl bg-white/[0.01] border border-white/5 space-y-3 flex flex-col justify-between">
-                      <span className="text-[9px] font-black text-violet-400 uppercase tracking-widest block mb-2">Rewards & Promotions Flow</span>
-                      <div className="flex flex-col items-center gap-2.5 h-full justify-center">
-                        <div className="px-3 py-1 rounded-lg bg-blue-500/10 border border-blue-500/20 text-white font-bold">Platform Revenue</div>
-                        <span className="text-gray-500 font-bold text-base leading-none">↓</span>
-                        <div className="px-3 py-1 rounded-lg bg-pink-500/10 border border-pink-500/20 text-white font-bold">Cashback Wallet</div>
-                        <span className="text-gray-500 font-bold text-base leading-none">↓</span>
-                        <div className="px-4 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 font-black">Rewards Distribution</div>
-                      </div>
+                  <div className="space-y-3.5">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-gray-400">Active Vault Users</span>
+                      <span className="font-mono font-bold text-white">{totalActiveVaultUsers}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-gray-400">Total Vault Deposits</span>
+                      <span className="font-mono font-bold text-white">${totalUserVaultAssets.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-gray-400">Total Yield Distributed</span>
+                      <span className="font-mono font-bold text-white">${(adminStats?.totalYieldDistributed || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-gray-400">Average Vault Balance</span>
+                      <span className="font-mono font-bold text-white">${(totalActiveVaultUsers > 0 ? totalUserVaultAssets / totalActiveVaultUsers : 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
                   </div>
                 </div>
               </div>
-            );
-          })()}
+
+              {/* 3. Treasury Money Flow */}
+              <div className="glass-panel p-6 rounded-3xl border border-white/5 bg-[#111118]/90 shadow-xl relative overflow-hidden">
+                <h4 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-2 mb-4">
+                  <Layers className="h-4 w-4 text-indigo-400" />
+                  Treasury Money Flow
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-center text-xs">
+                  {/* Vault Interest Flow */}
+                  <div className="p-5 rounded-2xl bg-white/[0.01] border border-white/5 space-y-3">
+                    <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest block mb-2">Vault Interest Accrual Flow</span>
+                    <div className="flex flex-col items-center gap-1.5">
+                      <div className="px-3 py-1 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-white font-bold">Founder Capital</div>
+                      <span className="text-gray-500 font-bold text-base leading-none">↓</span>
+                      <div className="px-3 py-1 rounded-lg bg-violet-500/10 border border-violet-500/20 text-white font-bold">Owner Treasury</div>
+                      <span className="text-gray-500 font-bold text-base leading-none">↓</span>
+                      <div className="px-3 py-1 rounded-lg bg-purple-500/10 border border-purple-500/20 text-white font-bold">Investment Portfolio</div>
+                      <span className="text-gray-500 font-bold text-base leading-none">↓</span>
+                      <div className="px-3 py-1 rounded-lg bg-fuchsia-500/10 border border-fuchsia-500/20 text-white font-bold">Yield Reserve</div>
+                      <span className="text-gray-500 font-bold text-base leading-none">↓</span>
+                      <div className="px-4 py-1.5 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 font-black">User Vault Interest</div>
+                    </div>
+                  </div>
+
+                  {/* Rewards & Promo Flow */}
+                  <div className="p-5 rounded-2xl bg-white/[0.01] border border-white/5 space-y-3 flex flex-col justify-between">
+                    <span className="text-[9px] font-black text-violet-400 uppercase tracking-widest block mb-2">Rewards & Promotions Flow</span>
+                    <div className="flex flex-col items-center gap-2.5 h-full justify-center">
+                      <div className="px-3 py-1 rounded-lg bg-blue-500/10 border border-blue-500/20 text-white font-bold">Platform Revenue</div>
+                      <span className="text-gray-500 font-bold text-base leading-none">↓</span>
+                      <div className="px-3 py-1 rounded-lg bg-pink-500/10 border border-pink-500/20 text-white font-bold">Cashback Wallet</div>
+                      <span className="text-gray-500 font-bold text-base leading-none">↓</span>
+                      <div className="px-4 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 font-black">Rewards Distribution</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
           {/* Executive Treasury Overview Grid */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
