@@ -1,0 +1,2 @@
+ALTER TABLE users ADD COLUMN backup_codes VARCHAR(1000);
+ALTER TABLE users ADD COLUMN transaction_pin VARCHAR(100);

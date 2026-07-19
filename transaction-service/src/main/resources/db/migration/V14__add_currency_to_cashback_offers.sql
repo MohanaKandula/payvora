@@ -1,0 +1,1 @@
+ALTER TABLE cashback_offers ADD COLUMN currency VARCHAR(3) NOT NULL DEFAULT 'USD';

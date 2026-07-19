@@ -1,0 +1,3 @@
+ALTER TABLE virtual_cards 
+ADD COLUMN color_theme VARCHAR(30) NOT NULL DEFAULT 'midnight',
+ADD COLUMN is_single_use BOOLEAN NOT NULL DEFAULT FALSE;

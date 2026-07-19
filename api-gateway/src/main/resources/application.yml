@@ -1,0 +1,71 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  
+  cloud:
+    gateway:
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins: "*"
+            allowedMethods: "*"
+            allowedHeaders: "*"
+      routes:
+        # Account Service Auth Routes (Public)
+        - id: account-service-auth
+          uri: ${ACCOUNT_SERVICE_URL:http://localhost:8081}
+          predicates:
+            - Path=/api/auth/**, /api/accounts/password/**
+
+        # Account Service Restricted Routes (JWT Filter Applied)
+        - id: account-service-restricted
+          uri: ${ACCOUNT_SERVICE_URL:http://localhost:8081}
+          predicates:
+            - Path=/api/accounts/**, /api/admin/**
+          filters:
+            - name: JwtValidationFilter
+
+        # Transaction Service Routes (JWT Filter Applied)
+        - id: transaction-service
+          uri: ${TRANSACTION_SERVICE_URL:http://localhost:8083}
+          predicates:
+            - Path=/api/transactions/**, /api/rewards/**, /api/vault/**, /api/treasury/**
+          filters:
+            - name: JwtValidationFilter
+
+        # Balance Projection Service Routes (JWT Filter Applied)
+        - id: balance-service
+          uri: ${BALANCE_SERVICE_URL:http://localhost:8084}
+          predicates:
+            - Path=/api/balances/**
+          filters:
+            - name: JwtValidationFilter
+
+        # Ledger Service Routes (JWT Filter Applied)
+        - id: ledger-service
+          uri: ${LEDGER_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/ledger/**
+          filters:
+            - name: JwtValidationFilter
+
+jwt:
+  secret: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus
+  endpoint:
+    health:
+      show-details: always
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: ${ZIPKIN_TRACING_URL:http://localhost:9411/api/v2/spans}

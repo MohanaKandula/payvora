@@ -1,0 +1,1 @@
+ALTER TABLE virtual_cards ADD COLUMN spent_amount DECIMAL(19, 4) NOT NULL DEFAULT 0.0000;
