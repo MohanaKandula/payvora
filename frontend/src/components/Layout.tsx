@@ -91,7 +91,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
 
         if (isAdmin) {
           setLoadingSecurity(false);
-          if (window.location.pathname === '/dashboard' || window.location.pathname === '/' || window.location.pathname === '/statement' || window.location.pathname === '/cards' || window.location.pathname === '/rewards') {
+          if (window.location.pathname === '/dashboard' || window.location.pathname === '/' || window.location.pathname === '/cards' || window.location.pathname === '/rewards') {
             navigate('/admin');
           }
         } else {
@@ -123,9 +123,10 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const menuItems = [];
 
   if (user?.isAdmin) {
-    // Admins get Admin Dashboard, Security, and Profile
+    // Admins get Admin Dashboard, Security, Profile, and Personal Statement
     menuItems.push(
       { name: 'Admin Dashboard', path: '/admin', icon: UserCheck },
+      { name: 'Personal Statement', path: '/statement', icon: Receipt },
       { name: 'Security', path: '/security', icon: ShieldCheck },
       { name: 'Profile', path: '/profile', icon: User }
     );
