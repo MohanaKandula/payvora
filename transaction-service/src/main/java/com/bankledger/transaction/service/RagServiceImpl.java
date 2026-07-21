@@ -637,39 +637,8 @@ public class RagServiceImpl implements RagService {
         String selectedWallet = context != null && context.get("selectedWallet") != null ? context.get("selectedWallet").toString() : "";
         String selectedTicket = context != null && context.get("selectedTicket") != null ? context.get("selectedTicket").toString() : "";
 
-        // 1. Context Ticket Scenario
-        if (!selectedTicket.isEmpty() || lowerQuery.contains("ticket")) {
-            currentStatus = "🔍 INVESTIGATING SUPPORT TICKET ESCALATION\n" +
-                    "• Ticket Target: " + (selectedTicket.isEmpty() ? "#TICK-901" : selectedTicket) + "\n" +
-                    "• Escalation Priority: URGENT / HIGH\n" +
-                    "• Account Status: KYC Verified / MFA Active";
-
-            rootCause = "Customer raised an operational inquiry regarding cashback credit delay on a $245.00 Grocery transaction. Live ledger verification confirmed cashback debit posted to Cashback Reserve (0xCB-482) but clearing suspense required agent authorization.";
-
-            operationalWorkflow = "Support tickets link directly to transaction audit logs and wallet explorer records. Administrators review operational context, post resolution notes, and trigger double-entry re-credits if necessary.";
-
-            impactAnalysis = "• Customer Resolution: Immediate agent reply resolves ticket SLA\n" +
-                    "• Cashback Reserve: Balance deducted by $12.25 rebate credit\n" +
-                    "• Audit Trail: Agent reply logs timestamped response in support database";
-
-            relatedComponents = "User Ticket Submission → Admin Support Desk → Wallet Explorer (0xCB-482) → User Reward Credit";
-
-            visualFlow = "User Ticket Submission (#" + (selectedTicket.isEmpty() ? "TICK-901" : selectedTicket) + ")\n" +
-                    "       ↓\n" +
-                    "Support Desk Diagnostic Engine\n" +
-                    "       ↓\n" +
-                    "Cashback Reserve (0xCB-482: $" + cashbackReserveBal.setScale(2, RoundingMode.HALF_UP) + ")\n" +
-                    "       ↓\n" +
-                    "Agent Action: Approve & Post Resolution";
-
-            recommendedActions = "1. Review transaction UTR in Wallet Explorer.\n" +
-                    "2. Click 'Reply & Resolve Ticket' in Admin Support Desk.\n" +
-                    "3. Confirm customer wallet credit balance.";
-
-            knowledgeSources = "support_workflows.md, cashback_wallet.md, compliance.md";
-        }
-        // 2. Treasury Health / Status
-        else if (lowerQuery.contains("treasury health") || lowerQuery.contains("treasury warning") || lowerQuery.contains("treasury status")) {
+        // 1. Treasury Health / Status
+        if (lowerQuery.contains("treasury health") || lowerQuery.contains("treasury warning") || lowerQuery.contains("treasury status")) {
             boolean isTreasuryHealthy = "HEALTHY".equalsIgnoreCase(decision.getTreasuryHealth());
 
             currentStatus = String.format("%s (Active Treasury Monitor)\n" +
@@ -923,6 +892,37 @@ public class RagServiceImpl implements RagService {
                     "3. Maintain 70% T-Bill allocation for maximum yield security.";
 
             knowledgeSources = "investments.md, treasury.md, platform_revenue.md, yield_distribution.md";
+        }
+        // 7. Context Ticket Scenario
+        else if (!selectedTicket.isEmpty() || lowerQuery.contains("ticket")) {
+            currentStatus = "🔍 INVESTIGATING SUPPORT TICKET ESCALATION\n" +
+                    "• Ticket Target: " + (selectedTicket.isEmpty() ? "#TICK-901" : selectedTicket) + "\n" +
+                    "• Escalation Priority: URGENT / HIGH\n" +
+                    "• Account Status: KYC Verified / MFA Active";
+
+            rootCause = "Customer raised an operational inquiry regarding cashback credit delay on a $245.00 Grocery transaction. Live ledger verification confirmed cashback debit posted to Cashback Reserve (0xCB-482) but clearing suspense required agent authorization.";
+
+            operationalWorkflow = "Support tickets link directly to transaction audit logs and wallet explorer records. Administrators review operational context, post resolution notes, and trigger double-entry re-credits if necessary.";
+
+            impactAnalysis = "• Customer Resolution: Immediate agent reply resolves ticket SLA\n" +
+                    "• Cashback Reserve: Balance deducted by $12.25 rebate credit\n" +
+                    "• Audit Trail: Agent reply logs timestamped response in support database";
+
+            relatedComponents = "User Ticket Submission → Admin Support Desk → Wallet Explorer (0xCB-482) → User Reward Credit";
+
+            visualFlow = "User Ticket Submission (#" + (selectedTicket.isEmpty() ? "TICK-901" : selectedTicket) + ")\n" +
+                    "       ↓\n" +
+                    "Support Desk Diagnostic Engine\n" +
+                    "       ↓\n" +
+                    "Cashback Reserve (0xCB-482: $" + cashbackReserveBal.setScale(2, RoundingMode.HALF_UP) + ")\n" +
+                    "       ↓\n" +
+                    "Agent Action: Approve & Post Resolution";
+
+            recommendedActions = "1. Review transaction UTR in Wallet Explorer.\n" +
+                    "2. Click 'Reply & Resolve Ticket' in Admin Support Desk.\n" +
+                    "3. Confirm customer wallet credit balance.";
+
+            knowledgeSources = "support_workflows.md, cashback_wallet.md, compliance.md";
         }
         // 8. General Operational Activity Summary
         else {
