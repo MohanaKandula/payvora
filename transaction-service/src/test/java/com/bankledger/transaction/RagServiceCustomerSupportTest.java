@@ -334,6 +334,6 @@ public class RagServiceCustomerSupportTest {
         assertNotNull(res);
         assertEquals("ADMIN_OPERATIONAL_INVESTIGATOR", res.getCategory());
         assertTrue(res.getAnswer().contains("Yield Engine State"));
-        assertTrue(res.getAnswer().contains("Live System & Account Data"));
+        assertTrue(res.getAnswer().contains("Live Telemetry & Operational Status"));
     }
 }
