@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { axiosInstance } from '../api/axiosInstance';
+import { axiosInstance, API_BASE_URL } from '../api/axiosInstance';
 import { 
   ShieldCheck, AlertCircle, RefreshCw, X, Zap, Gift, Wallet, ArrowDownRight, User, ArrowRight, CheckCircle2,
   ShieldAlert, FileSpreadsheet, Layers, PieChart, Coins, ArrowRightLeft, FileText, Percent, Sparkles,
@@ -212,7 +212,7 @@ export const AdminPanel: React.FC = () => {
         const response = await axiosInstance.get('/api/support/admin/tickets');
         return response.data;
       } catch (err) {
-        const fallback = await axios.get('http://localhost:8083/api/support/admin/tickets');
+        const fallback = await axios.get(`${API_BASE_URL.replace(':8080', ':8083')}/api/support/admin/tickets`);
         return fallback.data;
       }
     }
@@ -226,7 +226,7 @@ export const AdminPanel: React.FC = () => {
         });
         return res.data;
       } catch (err) {
-        const res = await axios.post(`http://localhost:8083/api/support/admin/tickets/${ticketId}/reply?status=${status}`, response, {
+        const res = await axios.post(`${API_BASE_URL.replace(':8080', ':8083')}/api/support/admin/tickets/${ticketId}/reply?status=${status}`, response, {
           headers: { 'Content-Type': 'text/plain' }
         });
         return res.data;
