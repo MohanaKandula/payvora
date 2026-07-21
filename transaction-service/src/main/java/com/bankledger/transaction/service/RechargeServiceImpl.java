@@ -134,6 +134,44 @@ public class RechargeServiceImpl implements RechargeService {
             transaction.setStatus(TransactionStatus.COMPLETED);
             transactionRepository.save(transaction);
 
+            // Process $1.00 Platform Fee Transfer to Corporate Platform Revenue Wallet
+            try {
+                UUID platformRevenueWalletId = UUID.fromString("e1b07221-50e5-4d76-bc34-31f41e57c602");
+                UUID feeTxId = UUID.randomUUID();
+                String feeKey = "FEE_" + txId.toString();
+                BigDecimal platformFee = new BigDecimal("1.00");
+
+                LedgerTransactionRequest feeReq = LedgerTransactionRequest.builder()
+                        .transactionId(feeTxId)
+                        .sourceAccountId(accountId)
+                        .targetAccountId(platformRevenueWalletId)
+                        .amount(platformFee)
+                        .currency("INR")
+                        .idempotencyKey(feeKey)
+                        .type("TRANSFER")
+                        .category("PLATFORM_FEE")
+                        .build();
+
+                LedgerTransactionResponse feeRes = ledgerClient.processTransaction(feeReq);
+                if ("SUCCESS".equals(feeRes.getStatus())) {
+                    Transaction feeTx = Transaction.builder()
+                            .id(feeTxId)
+                            .sourceAccountId(accountId)
+                            .targetAccountId(platformRevenueWalletId)
+                            .amount(platformFee)
+                            .currency("INR")
+                            .transactionType(TransactionType.TRANSFER)
+                            .status(TransactionStatus.COMPLETED)
+                            .idempotencyKey(feeKey)
+                            .category("PLATFORM_FEE")
+                            .build();
+                    transactionRepository.save(feeTx);
+                    log.info("Successfully credited $1.00 platform fee to Platform Revenue Wallet for recharge {}", txId);
+                }
+            } catch (Exception ex) {
+                log.error("Failed to collect $1.00 platform fee for recharge", ex);
+            }
+
             // Trigger Cashback Rewards Rule Engine Hook
             try {
                 rewardService.processTransactionCashback(
@@ -147,15 +185,31 @@ public class RechargeServiceImpl implements RechargeService {
                 log.error("Failed to process recharge rewards/cashback", ex);
             }
 
-            // Create notification for the user
+            // 1. Create notification for the user who paid
             try {
                 notificationService.createNotification(
                         accountId,
                         "Recharge Successful",
-                        "Your " + operator + " recharge of ₹" + amount.setScale(2) + " for +91 " + phoneNumber + " was completed successfully. Ref: " + operatorRef
+                        "Your " + operator + " recharge of ₹" + amount.setScale(2) + " (+$1.00 Platform Fee) for +91 " + phoneNumber + " was completed successfully. Ref: " + operatorRef
                 );
             } catch (Exception e) {
                 log.error("Failed to send recharge success notification", e);
+            }
+
+            // 2. Create notification for the recipient whose mobile number was recharged
+            try {
+                Map recipientAccount = accountClient.getAccountByPhoneNumber(phoneNumber);
+                if (recipientAccount != null && recipientAccount.get("id") != null) {
+                    UUID recipientId = UUID.fromString(recipientAccount.get("id").toString());
+                    String payerInfo = recipientId.equals(accountId) ? "yourself" : ((username != null && !username.trim().isEmpty()) ? username : "A Neobank User");
+                    notificationService.createNotification(
+                            recipientId,
+                            "Mobile Recharge Received! 🎉",
+                            "Your " + operator + " mobile number (+91 " + phoneNumber + ") was successfully recharged with a ₹" + amount.setScale(2) + " plan by " + payerInfo + ". Ref: " + operatorRef
+                    );
+                }
+            } catch (Exception e) {
+                log.error("Failed to send recharge recipient notification", e);
             }
 
             return TransactionResponse.builder()

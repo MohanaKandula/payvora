@@ -1,11 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import axios from 'axios';
 import { axiosInstance } from '../api/axiosInstance';
 import { 
   ShieldCheck, AlertCircle, RefreshCw, X, Zap, Gift, Wallet, ArrowDownRight, User, ArrowRight, CheckCircle2,
   ShieldAlert, FileSpreadsheet, Layers, PieChart, Coins, ArrowRightLeft, FileText, Percent, Sparkles,
-  Activity, TrendingUp, SlidersHorizontal, AlertTriangle
+  Activity, TrendingUp, SlidersHorizontal, AlertTriangle, Search, Filter, LifeBuoy, MessageSquare, Bot
 } from 'lucide-react';
+import { MarkdownReportRenderer } from '../components/MarkdownReportRenderer';
 
 interface AccountDto {
   id: string;
@@ -35,7 +38,17 @@ const parseError = (err: any, fallback: string): string => {
 
 export const AdminPanel: React.FC = () => {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'overview' | 'explorer' | 'lifecycle' | 'pnl' | 'registry' | 'rewards' | 'history'>('overview');
+  const [searchParams] = useSearchParams();
+  const initialTab = (searchParams.get('tab') as any) || 'overview';
+  const [activeTab, setActiveTab] = useState<'overview' | 'explorer' | 'lifecycle' | 'pnl' | 'registry' | 'rewards' | 'history' | 'support' | 'ai-copilot'>(initialTab);
+
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam) {
+      setActiveTab(tabParam as any);
+    }
+  }, [searchParams]);
+
   const [previewOrderId, setPreviewOrderId] = useState<string | null>(null);
 
   // Investment Creation Form States
@@ -85,8 +98,15 @@ export const AdminPanel: React.FC = () => {
   // Scoped User Account Inspection States
   const [inspectAccountId, setInspectAccountId] = useState<string | null>(null);
   const [inspectUsername, setInspectUsername] = useState<string | null>(null);
+  const [selectedUserAccId, setSelectedUserAccId] = useState<string | null>(null);
   
-  // APY Form state
+  // Vault Accounts Search & Filter States
+  const [vaultSearchTerm, setVaultSearchTerm] = useState('');
+  const [vaultKycFilter, setVaultKycFilter] = useState('ALL');
+  const [vaultStatusFilter, setVaultStatusFilter] = useState('ALL');
+  const [vaultBalanceFilter, setVaultBalanceFilter] = useState('ALL');
+  const [vaultSortBy, setVaultSortBy] = useState('BALANCE_DESC');
+  const [showVaultFilters, setShowVaultFilters] = useState(false);
   const [newApy, setNewApy] = useState('');
 
   // Treasury Activity History States
@@ -120,6 +140,111 @@ export const AdminPanel: React.FC = () => {
       return response.data;
     },
     enabled: !!adminAccountId
+  });
+
+  // Support Desk States
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [replyStatus, setReplyStatus] = useState<string>('RESOLVED');
+  const [replyText, setReplyText] = useState<string>('');
+  const [supportFilterStatus, setSupportFilterStatus] = useState<string>('ALL');
+  const [supportFilterPriority, setSupportFilterPriority] = useState<string>('ALL');
+
+  // Admin RAG Vector Search States
+  const [adminRagQuery, setAdminRagQuery] = useState('');
+  const [adminRagResult, setAdminRagResult] = useState<string | null>(null);
+  const [adminRagSource, setAdminRagSource] = useState<string | null>(null);
+  const [adminDecisionData, setAdminDecisionData] = useState<any | null>(null);
+  const [isAdminRagLoading, setIsAdminRagLoading] = useState(false);
+
+  const handlePerformRagQuery = async (queryText: string, contextPayload?: any) => {
+    const q = queryText.trim();
+    if (!q) return;
+    setIsAdminRagLoading(true);
+    setAdminRagResult(null);
+    setAdminRagSource(null);
+    setAdminDecisionData(null);
+    const payload = {
+      query: q,
+      isAdmin: true,
+      context: contextPayload
+    };
+    try {
+      const res = await axiosInstance.post('/api/support/rag/query', payload);
+      const data = res.data;
+
+      if (data) {
+        setAdminRagResult(data.answer || data.investigationAnswer || data.response);
+        setAdminRagSource(data.sourceDocument || data.knowledgeSources);
+        if (data.operationalState) {
+          setAdminDecisionData({
+            operationalState: data.operationalState,
+            ruleEvaluationTable: data.ruleEvaluationTable,
+            operationalAnalysis: data.operationalAnalysis,
+            dataTimestamp: data.dataTimestamp,
+            apiHealthStatus: data.apiHealthStatus,
+            usingDocFallback: data.usingDocFallback,
+            decisionConfidence: data.decisionConfidence,
+            confidenceDetails: data.confidenceDetails,
+            contextualRecommendations: data.contextualRecommendations
+          });
+        }
+      }
+    } catch (err: any) {
+      const errMsg = err?.response?.data?.message || err?.message || 'Error executing operational RAG query.';
+      setAdminRagResult(`### ⚠️ Investigation Query Error\n\nUnable to execute operational investigation.\n\n**Details**: ${errMsg}`);
+    } finally {
+      setIsAdminRagLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'ai-copilot' && !adminRagResult && !isAdminRagLoading) {
+      const defaultQuery = 'Why is Treasury Health showing Warning?';
+      setAdminRagQuery(defaultQuery);
+      handlePerformRagQuery(defaultQuery, { activeTab: 'ai-copilot' });
+    }
+  }, [activeTab]);
+
+  const { data: adminSupportTickets, refetch: refetchAdminSupportTickets } = useQuery<any[]>({
+    queryKey: ['admin-support-tickets'],
+    queryFn: async () => {
+      try {
+        const response = await axiosInstance.get('/api/support/admin/tickets');
+        return response.data;
+      } catch (err) {
+        const fallback = await axios.get('http://localhost:8083/api/support/admin/tickets');
+        return fallback.data;
+      }
+    }
+  });
+
+  const adminReplyTicketMutation = useMutation({
+    mutationFn: async ({ ticketId, status, response }: { ticketId: string; status: string; response: string }) => {
+      try {
+        const res = await axiosInstance.post(`/api/support/admin/tickets/${ticketId}/reply?status=${status}`, response, {
+          headers: { 'Content-Type': 'text/plain' }
+        });
+        return res.data;
+      } catch (err) {
+        const res = await axios.post(`http://localhost:8083/api/support/admin/tickets/${ticketId}/reply?status=${status}`, response, {
+          headers: { 'Content-Type': 'text/plain' }
+        });
+        return res.data;
+      }
+    },
+    onSuccess: () => {
+      setSuccessMsg('Successfully sent agent response and updated support ticket!');
+      queryClient.invalidateQueries({ queryKey: ['admin-support-tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['user-support-tickets'] });
+      refetchAdminSupportTickets();
+      setSelectedTicketId(null);
+      setReplyText('');
+      setTimeout(() => setSuccessMsg(''), 4000);
+    },
+    onError: (err: any) => {
+      setErrorMsg(parseError(err, 'Failed to update support ticket.'));
+      setTimeout(() => setErrorMsg(''), 4000);
+    }
   });
 
   // Admin Transfer Mutation
@@ -315,6 +440,45 @@ export const AdminPanel: React.FC = () => {
       return response.data;
     }
   });
+
+  // Overview Tab Calculated Metrics & Low Balance Alerts
+  const cashbackBal = systemWallets?.find(w => w.id === 'e1b07221-50e5-4d76-bc34-31f41e57c605')?.runningBalance || 0;
+  const yieldReserveBal = systemWallets?.find(w => w.id === 'e1b07221-50e5-4d76-bc34-31f41e57c603')?.runningBalance || 0;
+  const platformRevenueBal = systemWallets?.find(w => w.id === 'e1b07221-50e5-4d76-bc34-31f41e57c602')?.runningBalance || 0;
+  const ownerTreasuryBal = systemWallets?.find(w => w.id === 'e1b07221-50e5-4d76-bc34-31f41e57c601')?.runningBalance || 0;
+
+  const totalUserVaultAssets = vaultAccounts?.reduce((sum, acc) => sum + (acc.investedBalance || 0), 0) || adminStats?.totalAum || 0;
+  const totalActiveVaultUsers = vaultAccounts?.filter(acc => acc.investedBalance > 0).length || adminStats?.accountsCount || 0;
+  const todayInterestObligation = vaultAccounts?.reduce((sum, acc) => {
+    const balance = acc.investedBalance || 0;
+    const apy = acc.apyRate || adminStats?.apyRate || 0;
+    return sum + ((balance * (apy / 100)) / 365);
+  }, 0) || 0;
+
+  const calculatedObligation = todayInterestObligation > 0 
+    ? todayInterestObligation 
+    : (totalUserVaultAssets * ((adminStats?.apyRate || 0) / 100)) / 365;
+
+  const coverageDays = calculatedObligation > 0 ? Math.floor(yieldReserveBal / calculatedObligation) : 9999;
+
+  const alerts: string[] = [];
+  if (cashbackBal <= 0) {
+    alerts.push("Cashback Wallet is fully exhausted. Reward distributions are suspended!");
+  } else if (cashbackBal < 100) {
+    alerts.push(`Cashback Wallet is running low ($${cashbackBal.toFixed(2)}). Warning threshold is $100. Please top up.`);
+  }
+
+  if (yieldReserveBal <= 0) {
+    alerts.push("Yield Reserve Wallet is exhausted. Vault and APY interest payouts are suspended!");
+  } else if (yieldReserveBal < 1000) {
+    alerts.push(`Yield Reserve Wallet is running low ($${yieldReserveBal.toFixed(2)}). Warning threshold is $1,000. Please top up.`);
+  }
+
+  if (ownerTreasuryBal <= 0) {
+    alerts.push("Owner Treasury Wallet is fully depleted. System liquidity coverage is compromised!");
+  } else if (ownerTreasuryBal < 2000) {
+    alerts.push(`Owner Treasury Wallet is running low ($${ownerTreasuryBal.toFixed(2)}). Warning threshold is $2,000. Please top up.`);
+  }
 
   // Fetch Audit Logs
   const { data: auditLogs, refetch: refetchAuditLogs } = useQuery<any[]>({
@@ -661,7 +825,7 @@ export const AdminPanel: React.FC = () => {
       return response.data;
     },
     onSuccess: () => {
-      setSuccessMsg('Daily 4.5% APY interest yield accrued on neobank balances successfully!');
+      setSuccessMsg(`Daily APY interest yield accrued on neobank balances successfully!`);
       setTimeout(() => setSuccessMsg(''), 4000);
     },
     onError: (err: any) => {
@@ -682,7 +846,7 @@ export const AdminPanel: React.FC = () => {
 
   // Fetch all cashback offers
   const { data: offers, refetch: refetchOffers } = useQuery<any[]>({
-    queryKey: ['admin-cashback-offers'],
+    queryKey: ['rewards-admin-offers'],
     queryFn: async () => {
       const response = await axiosInstance.get('/api/rewards/admin/offers');
       return response.data;
@@ -705,6 +869,8 @@ export const AdminPanel: React.FC = () => {
     },
     onSuccess: () => {
       setSuccessMsg('Successfully created new cashback offer campaign!');
+      queryClient.invalidateQueries({ queryKey: ['rewards-admin-offers'] });
+      queryClient.invalidateQueries({ queryKey: ['rewards-offers'] });
       refetchOffers();
       refetchRewardsAnalytics();
       setOfferTitle('');
@@ -730,6 +896,8 @@ export const AdminPanel: React.FC = () => {
     },
     onSuccess: () => {
       setSuccessMsg('Successfully updated cashback offer status.');
+      queryClient.invalidateQueries({ queryKey: ['rewards-admin-offers'] });
+      queryClient.invalidateQueries({ queryKey: ['rewards-offers'] });
       refetchOffers();
       refetchRewardsAnalytics();
       setTimeout(() => setSuccessMsg(''), 4000);
@@ -770,6 +938,51 @@ export const AdminPanel: React.FC = () => {
     }
     updateApyMutation.mutate(parsedApy);
   };
+
+  // Filtered Compounding Vault Accounts for Accounts & Transfers tab
+  const filteredAccounts = (accounts || []).filter((acc) => {
+    const vaultAcc = vaultAccounts?.find(v => v.userId === acc.id);
+    const vaultBalance = vaultAcc ? (vaultAcc.investedBalance || 0) : 0;
+    
+    // Search text match (username, email, account ID)
+    if (vaultSearchTerm) {
+      const query = vaultSearchTerm.toLowerCase().trim();
+      const matchUser = acc.username?.toLowerCase().includes(query);
+      const matchEmail = acc.email?.toLowerCase().includes(query);
+      const matchId = acc.id?.toLowerCase().includes(query);
+      if (!matchUser && !matchEmail && !matchId) return false;
+    }
+
+    // KYC Filter
+    if (vaultKycFilter !== 'ALL') {
+      if (vaultKycFilter === 'APPROVED' && acc.kycStatus !== 'APPROVED') return false;
+      if (vaultKycFilter === 'PENDING' && acc.kycStatus !== 'PENDING' && acc.kycStatus !== 'SUBMITTED') return false;
+      if (vaultKycFilter === 'NOT_STARTED' && acc.kycStatus && acc.kycStatus !== 'NOT_STARTED') return false;
+    }
+
+    // Account / Vault Status Filter
+    if (vaultStatusFilter !== 'ALL') {
+      const status = vaultAcc ? vaultAcc.status : acc.status;
+      if (vaultStatusFilter === 'ACTIVE' && status !== 'ACTIVE') return false;
+      if (vaultStatusFilter === 'FROZEN' && status !== 'FROZEN' && status !== 'PAUSED') return false;
+    }
+
+    // Balance Filter
+    if (vaultBalanceFilter !== 'ALL') {
+      if (vaultBalanceFilter === 'FUNDED' && vaultBalance <= 0) return false;
+      if (vaultBalanceFilter === 'ZERO' && vaultBalance > 0) return false;
+    }
+
+    return true;
+  }).sort((a, b) => {
+    const vA = vaultAccounts?.find(v => v.userId === a.id)?.investedBalance || 0;
+    const vB = vaultAccounts?.find(v => v.userId === b.id)?.investedBalance || 0;
+    
+    if (vaultSortBy === 'BALANCE_DESC') return vB - vA;
+    if (vaultSortBy === 'BALANCE_ASC') return vA - vB;
+    if (vaultSortBy === 'USERNAME_ASC') return (a.username || '').localeCompare(b.username || '');
+    return 0;
+  });
 
   const getStatusBadge = (status: string) => {
     return status === 'ACTIVE'
@@ -905,47 +1118,8 @@ export const AdminPanel: React.FC = () => {
       </div>
 
       {/* CONDITIONAL RENDER BY ACTIVE TAB */}
-      {activeTab === 'overview' && adminStats && (() => {
-        const cashbackBal = systemWallets?.find(w => w.id === 'e1b07221-50e5-4d76-bc34-31f41e57c605')?.runningBalance || 0;
-        const yieldReserveBal = systemWallets?.find(w => w.id === 'e1b07221-50e5-4d76-bc34-31f41e57c603')?.runningBalance || 0;
-        const platformRevenueBal = systemWallets?.find(w => w.id === 'e1b07221-50e5-4d76-bc34-31f41e57c602')?.runningBalance || 0;
-        const ownerTreasuryBal = systemWallets?.find(w => w.id === 'e1b07221-50e5-4d76-bc34-31f41e57c601')?.runningBalance || 0;
-
-        const totalUserVaultAssets = vaultAccounts?.reduce((sum, acc) => sum + (acc.investedBalance || 0), 0) || adminStats?.totalAum || 0;
-        const totalActiveVaultUsers = vaultAccounts?.filter(acc => acc.investedBalance > 0).length || adminStats?.accountsCount || 0;
-        const todayInterestObligation = vaultAccounts?.reduce((sum, acc) => {
-          const balance = acc.investedBalance || 0;
-          const apy = acc.apyRate || 4.50;
-          return sum + ((balance * (apy / 100)) / 365);
-        }, 0) || 0;
-
-        const calculatedObligation = todayInterestObligation > 0 
-          ? todayInterestObligation 
-          : (totalUserVaultAssets * ((adminStats?.apyRate || 4.50) / 100)) / 365;
-
-        const coverageDays = calculatedObligation > 0 ? Math.floor(yieldReserveBal / calculatedObligation) : 9999;
-
-        const alerts: string[] = [];
-        if (cashbackBal <= 0) {
-          alerts.push("Cashback Wallet is fully exhausted. Reward distributions are suspended!");
-        } else if (cashbackBal < 100) {
-          alerts.push(`Cashback Wallet is running low ($${cashbackBal.toFixed(2)}). Warning threshold is $100. Please top up.`);
-        }
-
-        if (yieldReserveBal <= 0) {
-          alerts.push("Yield Reserve Wallet is exhausted. Vault and APY interest payouts are suspended!");
-        } else if (yieldReserveBal < 1000) {
-          alerts.push(`Yield Reserve Wallet is running low ($${yieldReserveBal.toFixed(2)}). Warning threshold is $1,000. Please top up.`);
-        }
-
-        if (ownerTreasuryBal <= 0) {
-          alerts.push("Owner Treasury Wallet is fully depleted. System liquidity coverage is compromised!");
-        } else if (ownerTreasuryBal < 2000) {
-          alerts.push(`Owner Treasury Wallet is running low ($${ownerTreasuryBal.toFixed(2)}). Warning threshold is $2,000. Please top up.`);
-        }
-
-        return (
-          <div className="space-y-8 animate-fade-in">
+      {activeTab === 'overview' && adminStats && (
+        <div className="space-y-8 animate-fade-in">
             {/* Reconciliation & Compliance Warnings */}
             {reconciliation && !reconciliation.balanced && (
               <div className="p-5 rounded-3xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex gap-4 animate-pulse">
@@ -1013,6 +1187,91 @@ export const AdminPanel: React.FC = () => {
             )}
 
             <div className="space-y-6">
+              {/* Treasury Funding & System Wallets Cards */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-2">
+                    <Wallet className="h-4 w-4 text-indigo-400" />
+                    Treasury Funding & System Wallets Overview
+                  </h3>
+                  <span className="text-[10px] font-mono text-gray-400">Real-Time Ledger Balances</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {/* 1. Owner Treasury Wallet */}
+                  <div className="glass-panel p-5 rounded-2xl border border-indigo-500/20 bg-gradient-to-br from-indigo-950/30 via-[#0d0d14] to-[#08080c] shadow-lg relative overflow-hidden group">
+                    <div className="flex justify-between items-start">
+                      <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest block">Owner Treasury</span>
+                      <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${ownerTreasuryBal < 2000 ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'}`}>
+                        {ownerTreasuryBal < 2000 ? 'Low Liquidity' : 'Active'}
+                      </span>
+                    </div>
+                    <p className="text-xl font-black text-white font-display mt-2">
+                      ${ownerTreasuryBal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-[10px] text-gray-400 mt-1">Primary treasury capital & liquidity buffer pool</p>
+                    <div className="mt-3 pt-2 border-t border-white/5 flex justify-between items-center text-[9px] text-gray-500 font-mono">
+                      <span>Min Threshold: $2,000.00</span>
+                      <span className="text-indigo-400 font-semibold">Treasury #01</span>
+                    </div>
+                  </div>
+
+                  {/* 2. Yield Reserve Wallet */}
+                  <div className="glass-panel p-5 rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-950/30 via-[#0d0d14] to-[#08080c] shadow-lg relative overflow-hidden group">
+                    <div className="flex justify-between items-start">
+                      <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest block">Yield Reserve Interest</span>
+                      <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${yieldReserveBal < 1000 ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'}`}>
+                        {yieldReserveBal < 1000 ? 'Low Reserve' : 'Solvent'}
+                      </span>
+                    </div>
+                    <p className="text-xl font-black text-white font-display mt-2">
+                      ${yieldReserveBal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-[10px] text-gray-400 mt-1">Daily APY interest obligations & yield payouts</p>
+                    <div className="mt-3 pt-2 border-t border-white/5 flex justify-between items-center text-[9px] text-gray-500 font-mono">
+                      <span>Min Threshold: $1,000.00</span>
+                      <span className="text-emerald-400 font-semibold">Reserve #03</span>
+                    </div>
+                  </div>
+
+                  {/* 3. Platform Revenue Wallet */}
+                  <div className="glass-panel p-5 rounded-2xl border border-blue-500/20 bg-gradient-to-br from-blue-950/30 via-[#0d0d14] to-[#08080c] shadow-lg relative overflow-hidden group">
+                    <div className="flex justify-between items-start">
+                      <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest block">Platform Revenue</span>
+                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                        Accumulating
+                      </span>
+                    </div>
+                    <p className="text-xl font-black text-white font-display mt-2">
+                      ${platformRevenueBal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-[10px] text-gray-400 mt-1">Protocol earnings, fees & retained net spread</p>
+                    <div className="mt-3 pt-2 border-t border-white/5 flex justify-between items-center text-[9px] text-gray-500 font-mono">
+                      <span>Spread Share: 20%</span>
+                      <span className="text-blue-400 font-semibold">Revenue #02</span>
+                    </div>
+                  </div>
+
+                  {/* 4. Cashback & Rewards Wallet */}
+                  <div className="glass-panel p-5 rounded-2xl border border-amber-500/20 bg-gradient-to-br from-amber-950/30 via-[#0d0d14] to-[#08080c] shadow-lg relative overflow-hidden group">
+                    <div className="flex justify-between items-start">
+                      <span className="text-[9px] font-black text-amber-400 uppercase tracking-widest block">Cashback & Rewards</span>
+                      <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${cashbackBal < 100 ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'}`}>
+                        {cashbackBal < 100 ? 'Low Pool' : 'Active'}
+                      </span>
+                    </div>
+                    <p className="text-xl font-black text-white font-display mt-2">
+                      ${cashbackBal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-[10px] text-gray-400 mt-1">Gamification rewards, spin wheel & cashbacks</p>
+                    <div className="mt-3 pt-2 border-t border-white/5 flex justify-between items-center text-[9px] text-gray-500 font-mono">
+                      <span>Min Threshold: $100.00</span>
+                      <span className="text-amber-400 font-semibold">Rewards #05</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Yield Funding Coverage & Vault Statistics */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Yield Funding Coverage Card */}
@@ -1124,9 +1383,6 @@ export const AdminPanel: React.FC = () => {
                 </div>
               </div>
             </div>
-          </div>
-        );
-      })()}
 
           {/* Executive Treasury Overview Grid */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
@@ -2691,19 +2947,29 @@ export const AdminPanel: React.FC = () => {
               </div>
 
               <div className="space-y-4">
-                <div className="p-4 rounded-xl bg-black/30 border border-white/5 space-y-2.5 text-xs">
-                  <div className="flex justify-between font-mono">
-                    <span className="text-gray-500">Gross Yield (5.5%):</span>
-                    <span className="text-white">${(adminStats.totalAum * 0.055 / 365).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/day</span>
+                <div className="space-y-3 font-mono text-xs p-4 rounded-2xl bg-white/[0.02] border border-white/5">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Gross Investment APY ({adminStats?.grossApyRate || ((adminStats?.apyRate || 0) + 1.00)}%):</span>
+                    <span className="text-white">${(adminStats.totalAum * ((adminStats?.grossApyRate || ((adminStats?.apyRate || 0) + 1.00)) / 100) / 365).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/day</span>
                   </div>
                   <div className="flex justify-between font-mono">
-                    <span className="text-gray-500">Paid to Users ({adminStats.apyRate}%):</span>
+                    <span className="text-gray-500">Paid to User Vaults ({adminStats.apyRate}%):</span>
                     <span className="text-white">${(adminStats.totalAum * (adminStats.apyRate / 100) / 365).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/day</span>
                   </div>
                   <div className="h-px bg-white/5" />
                   <div className="flex justify-between font-mono font-bold text-fuchsia-400">
-                    <span>Net Platform Spread:</span>
-                    <span>${(adminStats.totalAum * (5.50 - adminStats.apyRate) / 100 / 365).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/day</span>
+                    <span>Platform Spread ({adminStats?.platformSpread || 1.00}%):</span>
+                    <span>${(adminStats.totalAum * ((adminStats?.platformSpread || 1.00) / 100) / 365).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/day</span>
+                  </div>
+                  <div className="pt-2 border-t border-white/5 flex flex-col gap-1 text-[10px] text-gray-400 font-sans">
+                    <div className="flex justify-between">
+                      <span>Effective Since:</span>
+                      <span className="font-mono text-emerald-400">{adminStats?.effectiveFrom ? new Date(adminStats.effectiveFrom).toLocaleString() : 'Active'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Updated By:</span>
+                      <span className="font-mono text-indigo-300">{adminStats?.updatedBy || 'ADMIN'}</span>
+                    </div>
                   </div>
                 </div>
 
@@ -2734,12 +3000,12 @@ export const AdminPanel: React.FC = () => {
                     </button>
                     <button
                       onClick={() => {
-                        if (confirm('Trigger daily 4.5% APY savings interest accrual on all neobank balances now?')) {
+                        if (confirm('Trigger daily APY savings interest accrual on all neobank balances now?')) {
                           triggerApyInterestMutation.mutate();
                         }
                       }}
                       className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-violet-500/20 bg-violet-500/5 hover:bg-violet-500/10 text-violet-400 text-xs font-semibold transition-all"
-                      title="Accrue 4.5% APY Savings Interest on Spendable Balances"
+                      title="Accrue APY Savings Interest on Spendable Balances"
                     >
                       <Sparkles className="h-3.5 w-3.5" />
                       Trigger APY Savings
@@ -2992,243 +3258,484 @@ export const AdminPanel: React.FC = () => {
           </div>
 
           {/* User Accounts Registry Section */}
-          <div className="text-xs font-black text-gray-400 uppercase tracking-widest pl-1">
-            Ledger Accounts Registrations
-          </div>
-
-          {isLoading ? (
-            <div className="space-y-3">
-              {[...Array(3)].map((_, idx) => (
-                <div key={idx} className="h-20 bg-white/5 rounded-2xl animate-pulse" />
-              ))}
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pl-1">
+              <div className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                <Wallet className="h-4 w-4 text-violet-400" />
+                Compounding Vault Accounts
+              </div>
+              <span className="text-[10px] font-mono text-gray-500">
+                Showing {filteredAccounts.length} of {accounts?.length || 0} accounts
+              </span>
             </div>
-          ) : isError ? (
-            <div className="p-6 rounded-3xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-center">
-              <p className="font-semibold">Access Denied or Connection Failure</p>
-              <p className="text-xs text-rose-500/80 mt-1">You must be logged in as an administrator to access this console.</p>
-            </div>
-          ) : accounts && accounts.length > 0 ? (
-            <div className="glass-panel rounded-3xl overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-white/5 text-xs text-gray-500 uppercase tracking-wider font-semibold font-mono">
-                      <th className="p-4 pl-6">Username / Email</th>
-                      <th className="p-4">Account ID</th>
-                      <th className="p-4">KYC Status</th>
-                      <th className="p-4">Account Status</th>
-                      <th className="p-4">MFA Setup</th>
-                      <th className="p-4">Vault Active</th>
-                      <th className="p-4">Vault Balance</th>
-                      <th className="p-4">Lifetime Yield</th>
-                      <th className="p-4 pr-6 text-right font-semibold">Decisive Audit Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/5 text-sm">
-                    {accounts.map((acc) => {
-                      const vaultAcc = vaultAccounts?.find(v => v.userId === acc.id);
-                      const isVaultActive = vaultAcc ? (vaultAcc.status === 'ACTIVE' || vaultAcc.status === 'PAUSED' || vaultAcc.status === 'FROZEN') : false;
-                      const vaultBalance = vaultAcc ? vaultAcc.investedBalance : 0;
-                      const lifetimeYield = vaultAcc ? vaultAcc.totalYieldEarned : 0;
-                      const vaultStatus = vaultAcc ? vaultAcc.status : 'INACTIVE';
 
-                      return (
-                        <tr key={acc.id} className="hover:bg-white/[0.01] transition-colors">
-                          <td className="p-4 pl-6">
-                            <p className="font-semibold text-white">{acc.username}</p>
-                            <p className="text-xs text-gray-400">{acc.email}</p>
-                          </td>
-                          <td className="p-4 font-mono text-xs text-gray-400">{acc.id}</td>
-                          <td className="p-4">
-                            <span className={`text-[10px] px-2 py-0.5 rounded font-black uppercase ${
-                              acc.kycStatus === 'APPROVED'
-                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                : acc.kycStatus === 'PENDING'
-                                ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                                : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                            }`}>
-                              {acc.kycStatus || 'NOT_STARTED'}
-                            </span>
-                          </td>
-                          <td className="p-4">
-                            <span className={`text-[10px] px-2 py-0.5 rounded font-black uppercase ${getStatusBadge(acc.status)}`}>
-                              {acc.status}
-                            </span>
-                          </td>
-                          <td className="p-4">
-                            <span className={`text-[10px] px-2 py-0.5 rounded font-black uppercase ${
-                              acc.mfaEnabled
-                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-                            }`}>
-                              {acc.mfaEnabled ? 'Enabled' : 'Disabled'}
-                            </span>
-                          </td>
-                          <td className="p-4">
-                            <span className={`text-[10px] px-2 py-0.5 rounded font-black uppercase ${
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+                  {/* Left Sidebar: User Accounts Search, Filter Controls & List */}
+                  <div className="lg:col-span-1 space-y-3">
+                    {/* Search Input Bar */}
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-500" />
+                      <input
+                        type="text"
+                        value={vaultSearchTerm}
+                        onChange={(e) => setVaultSearchTerm(e.target.value)}
+                        placeholder="Search user, email, or ID..."
+                        className="w-full pl-9 pr-8 py-2 rounded-xl bg-black/40 border border-white/10 text-white text-xs placeholder:text-gray-600 focus:outline-none focus:border-violet-500/50 transition font-sans"
+                      />
+                      {vaultSearchTerm && (
+                        <button
+                          onClick={() => setVaultSearchTerm('')}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white text-xs p-0.5"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Filter Toggle Button & Active Filters Indicator */}
+                    <div className="flex items-center justify-between text-[10px]">
+                      <button
+                        onClick={() => setShowVaultFilters(!showVaultFilters)}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border font-semibold transition ${
+                          showVaultFilters || vaultKycFilter !== 'ALL' || vaultStatusFilter !== 'ALL' || vaultBalanceFilter !== 'ALL' || vaultSortBy !== 'BALANCE_DESC'
+                            ? 'bg-violet-500/10 border-violet-500/30 text-violet-300'
+                            : 'bg-white/[0.02] border-white/5 text-gray-400 hover:text-white'
+                        }`}
+                      >
+                        <Filter className="h-3 w-3" />
+                        <span>Filter & Sort</span>
+                        {(vaultKycFilter !== 'ALL' || vaultStatusFilter !== 'ALL' || vaultBalanceFilter !== 'ALL' || vaultSortBy !== 'BALANCE_DESC') && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-violet-400" />
+                        )}
+                      </button>
+
+                      {(vaultSearchTerm || vaultKycFilter !== 'ALL' || vaultStatusFilter !== 'ALL' || vaultBalanceFilter !== 'ALL' || vaultSortBy !== 'BALANCE_DESC') && (
+                        <button
+                          onClick={() => {
+                            setVaultSearchTerm('');
+                            setVaultKycFilter('ALL');
+                            setVaultStatusFilter('ALL');
+                            setVaultBalanceFilter('ALL');
+                            setVaultSortBy('BALANCE_DESC');
+                          }}
+                          className="text-gray-500 hover:text-rose-400 text-[10px] underline font-mono"
+                        >
+                          Reset All
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Expanded Filter Options Panel */}
+                    {showVaultFilters && (
+                      <div className="p-3 rounded-2xl bg-black/50 border border-white/10 space-y-2.5 text-xs animate-fade-in">
+                        <div>
+                          <label className="block text-[9px] font-extrabold text-gray-400 uppercase tracking-wider mb-1">KYC Verification</label>
+                          <select
+                            value={vaultKycFilter}
+                            onChange={(e) => setVaultKycFilter(e.target.value)}
+                            className="w-full px-2.5 py-1.5 rounded-lg bg-black/60 border border-white/10 text-white text-[11px] focus:outline-none focus:border-violet-500"
+                          >
+                            <option value="ALL">All KYC Statuses</option>
+                            <option value="APPROVED">KYC Verified (Approved)</option>
+                            <option value="PENDING">KYC Pending / Submitted</option>
+                            <option value="NOT_STARTED">KYC Not Started</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-[9px] font-extrabold text-gray-400 uppercase tracking-wider mb-1">Vault Account Status</label>
+                          <select
+                            value={vaultStatusFilter}
+                            onChange={(e) => setVaultStatusFilter(e.target.value)}
+                            className="w-full px-2.5 py-1.5 rounded-lg bg-black/60 border border-white/10 text-white text-[11px] focus:outline-none focus:border-violet-500"
+                          >
+                            <option value="ALL">All Account Statuses</option>
+                            <option value="ACTIVE">Active Vaults</option>
+                            <option value="FROZEN">Frozen / Paused Vaults</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-[9px] font-extrabold text-gray-400 uppercase tracking-wider mb-1">Vault Balance Level</label>
+                          <select
+                            value={vaultBalanceFilter}
+                            onChange={(e) => setVaultBalanceFilter(e.target.value)}
+                            className="w-full px-2.5 py-1.5 rounded-lg bg-black/60 border border-white/10 text-white text-[11px] focus:outline-none focus:border-violet-500"
+                          >
+                            <option value="ALL">All Vault Balances</option>
+                            <option value="FUNDED">Funded Vaults (&gt; $0)</option>
+                            <option value="ZERO">Zero Balance ($0)</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-[9px] font-extrabold text-gray-400 uppercase tracking-wider mb-1">Sort Order</label>
+                          <select
+                            value={vaultSortBy}
+                            onChange={(e) => setVaultSortBy(e.target.value)}
+                            className="w-full px-2.5 py-1.5 rounded-lg bg-black/60 border border-white/10 text-white text-[11px] focus:outline-none focus:border-violet-500"
+                          >
+                            <option value="BALANCE_DESC">Highest Balance First</option>
+                            <option value="BALANCE_ASC">Lowest Balance First</option>
+                            <option value="USERNAME_ASC">Username (A - Z)</option>
+                          </select>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Accounts List Container */}
+                    <div className="space-y-2 max-h-[620px] overflow-y-auto custom-scrollbar pr-1">
+                      {isLoading ? (
+                        [...Array(5)].map((_, idx) => (
+                          <div key={idx} className="h-16 bg-white/5 rounded-2xl animate-pulse" />
+                        ))
+                      ) : isError ? (
+                        <p className="text-rose-400 text-xs pl-1">Error fetching accounts</p>
+                      ) : filteredAccounts && filteredAccounts.length > 0 ? (
+                        filteredAccounts.map((acc) => {
+                          const vaultAcc = vaultAccounts?.find(v => v.userId === acc.id);
+                          const vaultBalance = vaultAcc ? vaultAcc.investedBalance : 0;
+                          const isSelected = selectedUserAccId === acc.id || (!selectedUserAccId && filteredAccounts[0].id === acc.id);
+
+                          // Set default selected user account if none is selected
+                          if (!selectedUserAccId && filteredAccounts.length > 0) {
+                            setTimeout(() => setSelectedUserAccId(filteredAccounts[0].id), 0);
+                          }
+
+                          return (
+                            <button
+                              key={acc.id}
+                              onClick={() => setSelectedUserAccId(acc.id)}
+                              className={`w-full text-left p-4 rounded-2xl border transition-all ${
+                                isSelected
+                                  ? 'bg-violet-600/10 border-violet-500 text-white shadow-md'
+                                  : 'bg-[#12121a]/85 border-white/5 text-gray-400 hover:text-white hover:bg-white/[0.02]'
+                              }`}
+                            >
+                              <div className="flex justify-between items-start gap-1">
+                                <span className="font-semibold text-xs truncate max-w-[120px]">{acc.username}</span>
+                                <span className={`text-[8px] px-1.5 py-0.5 rounded font-black uppercase shrink-0 ${
+                                  acc.kycStatus === 'APPROVED'
+                                    ? 'bg-emerald-500/10 text-emerald-400'
+                                    : 'bg-amber-500/10 text-amber-400'
+                                }`}>
+                                  {acc.kycStatus || 'NOT_STARTED'}
+                                </span>
+                              </div>
+                              <span className="text-[8px] font-mono block text-gray-500 mt-1 truncate">{acc.email}</span>
+                              <span className="font-mono text-xs font-bold mt-2 block">${vaultBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                            </button>
+                          );
+                        })
+                      ) : (
+                        <div className="p-4 text-center rounded-2xl bg-white/[0.01] border border-white/5 space-y-1">
+                          <p className="text-gray-400 text-xs font-semibold">No matching accounts</p>
+                          <p className="text-[10px] text-gray-500">Try adjusting your search query or filter settings.</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+            {/* Right Content Pane: Selected User Account Details, Forms, and Transactions */}
+            <div className="lg:col-span-3 space-y-8">
+              {(() => {
+                const targetUserId = selectedUserAccId || (accounts && accounts.length > 0 ? accounts[0].id : null);
+                if (!targetUserId) {
+                  return (
+                    <div className="p-8 text-center text-gray-500 font-semibold italic border border-white/5 rounded-3xl bg-white/[0.01]">
+                      Select an account from the left sidebar to explore configuration details.
+                    </div>
+                  );
+                }
+
+                const acc = accounts?.find(a => a.id === targetUserId);
+                if (!acc) return null;
+
+                const vaultAcc = vaultAccounts?.find(v => v.userId === acc.id);
+                const isVaultActive = vaultAcc ? (vaultAcc.status === 'ACTIVE' || vaultAcc.status === 'PAUSED' || vaultAcc.status === 'FROZEN') : false;
+                const vaultBalance = vaultAcc ? vaultAcc.investedBalance : 0;
+                const lifetimeYield = vaultAcc ? vaultAcc.totalYieldEarned : 0;
+                const vaultStatus = vaultAcc ? vaultAcc.status : 'INACTIVE';
+
+                return (
+                  <div className="space-y-8">
+                    {/* User Core Stats Banner */}
+                    <div className="glass-panel p-6 rounded-3xl border border-white/5 bg-[#12121a]/85 relative overflow-hidden">
+                      <div className="absolute top-0 right-0 p-6 text-[8px] font-black font-mono text-gray-700 tracking-wider">
+                        USER ID: {acc.id}
+                      </div>
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-3">
+                          <span className="px-2.5 py-0.5 bg-violet-500/10 text-violet-400 border border-violet-500/20 rounded text-[9px] font-bold uppercase tracking-wider">
+                            Compounding Vault Account Details
+                          </span>
+                          <span className={`text-[9px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded border ${
+                            acc.status === 'ACTIVE'
+                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                              : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                          }`}>
+                            Account: {acc.status}
+                          </span>
+                        </div>
+                        <h2 className="text-xl font-black text-white font-display uppercase tracking-tight">{acc.username}</h2>
+
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 pt-4 border-t border-white/5">
+                          <div>
+                            <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider block">Email</span>
+                            <span className="text-xs font-semibold text-white mt-1 block truncate">{acc.email}</span>
+                          </div>
+                          <div>
+                            <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider block">Vault Active</span>
+                            <span className={`inline-block mt-1 text-[10px] px-2 py-0.5 rounded font-black uppercase ${
                               isVaultActive
                                 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                                 : 'bg-white/5 text-gray-500 border border-white/10'
                             }`}>
                               {isVaultActive ? vaultStatus : 'INACTIVE'}
                             </span>
-                          </td>
-                          <td className="p-4 font-mono font-bold text-white">
-                            ${vaultBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                          </td>
-                          <td className="p-4 font-mono font-bold text-emerald-400">
-                            ${lifetimeYield.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                          </td>
-                          <td className="p-4 pr-6">
-                            <div className="flex flex-col gap-2 items-end">
-                              <div className="flex gap-2 justify-end">
-                                <button
-                                  onClick={() => {
-                                    setInspectAccountId(acc.id);
-                                    setInspectUsername(acc.username);
-                                  }}
-                                  className="px-2 py-1 rounded-lg border border-violet-500/20 bg-violet-500/5 hover:bg-violet-500/10 text-violet-400 text-[10px] font-bold transition-all"
-                                >
-                                  View History
-                                </button>
-                                {acc.kycStatus && acc.kycDocumentBase64 && (
-                                  <button
-                                    onClick={() => setSelectedKycDoc({
-                                      type: acc.kycDocumentType || 'ID_CARD',
-                                      data: acc.kycDocumentBase64 || '',
-                                      number: acc.kycDocumentNumber || 'N/A',
-                                      selfie: acc.kycSelfieBase64 || '',
-                                      user: acc.username,
-                                      faceMatchScore: acc.faceMatchScore,
-                                      ocrConfidence: acc.ocrConfidence,
-                                      riskScore: acc.riskScore
-                                    })}
-                                    className="px-2 py-1 rounded-lg border border-indigo-500/20 bg-indigo-500/5 hover:bg-indigo-500/10 text-indigo-400 text-[10px] font-bold transition"
-                                  >
-                                    Review KYC
-                                  </button>
-                                )}
+                          </div>
+                          <div>
+                            <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider block">Vault Balance</span>
+                            <span className="text-sm font-black text-white font-mono mt-1 block">
+                              ${vaultBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider block">Lifetime Yield</span>
+                            <span className="text-sm font-black text-emerald-400 font-mono mt-1 block">
+                              ${lifetimeYield.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
 
-                                {acc.mfaEnabled && (
-                                  <button
-                                    onClick={() => {
-                                      if (confirm(`Reset MFA configuration for ${acc.username}?`)) {
-                                        resetMfaMutation.mutate(acc.id);
-                                      }
-                                    }}
-                                    disabled={resetMfaMutation.isPending}
-                                    className="px-2 py-1 rounded-lg border border-white/5 bg-white/5 hover:bg-white/10 text-gray-300 text-[10px] font-bold transition"
-                                  >
-                                    Reset 2FA
-                                  </button>
-                                )}
+                    {/* Decisive Audit Actions */}
+                    <div className="glass-panel p-6 rounded-3xl border border-white/5 bg-[#12121a]/85 space-y-4">
+                      <h3 className="text-xs font-black text-white uppercase tracking-wider">Decisive Audit Actions</h3>
+                      <div className="flex flex-wrap gap-3">
+                        <button
+                          onClick={() => {
+                            setInspectAccountId(acc.id);
+                            setInspectUsername(acc.username);
+                          }}
+                          className="px-4 py-2 rounded-xl border border-violet-500/20 bg-violet-500/5 hover:bg-violet-500/10 text-violet-400 text-xs font-bold transition-all"
+                        >
+                          View History
+                        </button>
 
-                                {acc.status === 'ACTIVE' ? (
-                                  <button
-                                    onClick={() => {
-                                      if (confirm(`Are you sure you want to freeze ledger withdrawals for ${acc.username}?`)) {
-                                        freezeMutation.mutate(acc.id);
-                                      }
-                                    }}
-                                    disabled={freezeMutation.isPending}
-                                    className="px-2 py-1 rounded-lg border border-rose-500/20 bg-rose-500/5 hover:bg-rose-500/10 text-rose-400 text-[10px] font-bold transition"
-                                  >
-                                    Freeze
-                                  </button>
-                                ) : (
-                                  <button
-                                    onClick={() => {
-                                      if (confirm(`Unfreeze active transactions access for ${acc.username}?`)) {
-                                        unfreezeMutation.mutate(acc.id);
-                                      }
-                                    }}
-                                    disabled={unfreezeMutation.isPending}
-                                    className="px-2 py-1 rounded-lg border border-emerald-500/20 bg-emerald-500/5 hover:bg-emerald-500/10 text-emerald-400 text-[10px] font-bold transition"
-                                  >
-                                    Unfreeze
-                                  </button>
-                                )}
-                              </div>
+                        {acc.kycStatus && acc.kycDocumentBase64 && (
+                          <button
+                            onClick={() => setSelectedKycDoc({
+                              type: acc.kycDocumentType || 'ID_CARD',
+                              data: acc.kycDocumentBase64 || '',
+                              number: acc.kycDocumentNumber || 'N/A',
+                              selfie: acc.kycSelfieBase64 || '',
+                              user: acc.username,
+                              faceMatchScore: acc.faceMatchScore,
+                              ocrConfidence: acc.ocrConfidence,
+                              riskScore: acc.riskScore
+                            })}
+                            className="px-4 py-2 rounded-xl border border-indigo-500/20 bg-indigo-500/5 hover:bg-indigo-500/10 text-indigo-400 text-xs font-bold transition-all"
+                          >
+                            Review KYC
+                          </button>
+                        )}
 
-                              {isVaultActive && (
-                                <div className="flex gap-2 justify-end">
-                                  {vaultStatus !== 'FROZEN' ? (
-                                    <button
-                                      onClick={() => {
-                                        const reason = prompt('Enter reason for freezing vault:');
-                                        if (reason) {
-                                          updateVaultStatusMutation.mutate({ accountId: acc.id, status: 'FROZEN', reason });
-                                        }
-                                      }}
-                                      disabled={updateVaultStatusMutation.isPending}
-                                      className="px-2 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-450 text-[10px] font-bold"
-                                    >
-                                      Freeze Vault
-                                    </button>
-                                  ) : (
-                                    <button
-                                      onClick={() => {
-                                        const reason = prompt('Enter reason for unfreezing vault:');
-                                        if (reason) {
-                                          updateVaultStatusMutation.mutate({ accountId: acc.id, status: 'ACTIVE', reason });
-                                        }
-                                      }}
-                                      disabled={updateVaultStatusMutation.isPending}
-                                      className="px-2 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold"
-                                    >
-                                      Unfreeze Vault
-                                    </button>
-                                  )}
+                        {acc.mfaEnabled && (
+                          <button
+                            onClick={() => {
+                              if (confirm(`Reset MFA configuration for ${acc.username}?`)) {
+                                resetMfaMutation.mutate(acc.id);
+                              }
+                            }}
+                            disabled={resetMfaMutation.isPending}
+                            className="px-4 py-2 rounded-xl border border-white/5 bg-white/5 hover:bg-white/10 text-gray-300 text-xs font-bold transition-all"
+                          >
+                            Reset 2FA
+                          </button>
+                        )}
 
-                                  {vaultStatus === 'ACTIVE' && (
-                                    <button
-                                      onClick={() => {
-                                        const reason = prompt('Enter reason for pausing vault interest accrual:');
-                                        if (reason) {
-                                          updateVaultStatusMutation.mutate({ accountId: acc.id, status: 'PAUSED', reason });
-                                        }
-                                      }}
-                                      disabled={updateVaultStatusMutation.isPending}
-                                      className="px-2 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-400 text-[10px] font-bold"
-                                    >
-                                      Pause APY
-                                    </button>
-                                  )}
+                        <button
+                          onClick={() => {
+                            if (acc.status === 'ACTIVE') {
+                              if (confirm(`Are you sure you want to freeze ledger withdrawals for ${acc.username}?`)) {
+                                freezeMutation.mutate(acc.id);
+                              }
+                            } else {
+                              if (confirm(`Unfreeze active transactions access for ${acc.username}?`)) {
+                                unfreezeMutation.mutate(acc.id);
+                              }
+                            }
+                          }}
+                          disabled={freezeMutation.isPending || unfreezeMutation.isPending}
+                          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                            acc.status === 'ACTIVE'
+                              ? 'bg-rose-600/10 hover:bg-rose-600/20 text-rose-450 border border-rose-500/20'
+                              : 'bg-emerald-600/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20'
+                          }`}
+                        >
+                          {acc.status === 'ACTIVE' ? 'Freeze Withdrawals' : 'Unfreeze Withdrawals'}
+                        </button>
 
-                                  {vaultStatus === 'PAUSED' && (
-                                    <button
-                                      onClick={() => {
-                                        const reason = prompt('Enter reason for resuming vault interest accrual:');
-                                        if (reason) {
-                                          updateVaultStatusMutation.mutate({ accountId: acc.id, status: 'ACTIVE', reason });
-                                        }
-                                      }}
-                                      disabled={updateVaultStatusMutation.isPending}
-                                      className="px-2 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold"
-                                    >
-                                      Resume APY
-                                    </button>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                        {isVaultActive && (
+                          <>
+                            {vaultStatus !== 'FROZEN' ? (
+                              <button
+                                onClick={() => {
+                                  const reason = prompt('Enter reason for freezing vault:');
+                                  if (reason) {
+                                    updateVaultStatusMutation.mutate({ accountId: acc.id, status: 'FROZEN', reason });
+                                  }
+                                }}
+                                disabled={updateVaultStatusMutation.isPending}
+                                className="px-4 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-450 text-xs font-bold transition-all"
+                              >
+                                Freeze Vault
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  const reason = prompt('Enter reason for unfreezing vault:');
+                                  if (reason) {
+                                    updateVaultStatusMutation.mutate({ accountId: acc.id, status: 'ACTIVE', reason });
+                                  }
+                                }}
+                                disabled={updateVaultStatusMutation.isPending}
+                                className="px-4 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-400 text-xs font-bold transition-all"
+                              >
+                                Unfreeze Vault
+                              </button>
+                            )}
+
+                            {vaultStatus === 'ACTIVE' && (
+                              <button
+                                onClick={() => {
+                                  const reason = prompt('Enter reason for pausing vault interest accrual:');
+                                  if (reason) {
+                                    updateVaultStatusMutation.mutate({ accountId: acc.id, status: 'PAUSED', reason });
+                                  }
+                                }}
+                                disabled={updateVaultStatusMutation.isPending}
+                                className="px-4 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-400 text-xs font-bold transition-all"
+                              >
+                                Pause APY
+                              </button>
+                            )}
+
+                            {vaultStatus === 'PAUSED' && (
+                              <button
+                                onClick={() => {
+                                  const reason = prompt('Enter reason for resuming vault interest accrual:');
+                                  if (reason) {
+                                    updateVaultStatusMutation.mutate({ accountId: acc.id, status: 'ACTIVE', reason });
+                                  }
+                                }}
+                                disabled={updateVaultStatusMutation.isPending}
+                                className="px-4 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-400 text-xs font-bold transition-all"
+                              >
+                                Resume APY
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Send Funds / Admin Transfer to Selected User */}
+                    <div className="glass-panel p-6 rounded-3xl border border-white/5 bg-[#12121a]/85 space-y-4">
+                      <div className="flex items-center gap-2">
+                        <ArrowDownRight className="h-5 w-5 text-violet-400" />
+                        <h2 className="text-sm font-black text-white uppercase tracking-wider">Direct Funds Transfer to {acc.username}</h2>
+                      </div>
+                      <p className="text-xs text-gray-400">
+                        Transfer spendable cash pools directly to this account. Transactions are recorded instantly on the double-entry ledger.
+                      </p>
+
+                      {transferSuccess && (
+                        <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-start gap-2.5">
+                          <CheckCircle2 className="h-4.5 w-4.5 shrink-0 mt-0.5" />
+                          <span>{transferSuccess}</span>
+                        </div>
+                      )}
+
+                      {transferError && (
+                        <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-start gap-2.5">
+                          <AlertCircle className="h-4.5 w-4.5 shrink-0 mt-0.5" />
+                          <span>{transferError}</span>
+                        </div>
+                      )}
+
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          setTransferError('');
+                          setTransferSuccess('');
+                          const amtVal = parseFloat(transferAmount);
+                          if (isNaN(amtVal) || amtVal <= 0) {
+                            setTransferError('Please enter a valid transfer amount.');
+                            return;
+                          }
+                          if (transferPin.length !== 4) {
+                            setTransferError('Please enter your 4-digit Transaction PIN.');
+                            return;
+                          }
+                          adminTransferMutation.mutate({
+                            target: acc.username,
+                            amt: amtVal,
+                            pin: transferPin
+                          });
+                        }}
+                        className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end"
+                      >
+                        <div>
+                          <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Amount (USD)</label>
+                          <div className="relative">
+                            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500 font-bold text-xs">$</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              required
+                              value={transferAmount}
+                              onChange={(e) => setTransferAmount(e.target.value)}
+                              placeholder="0.00"
+                              className="w-full pl-8 pr-4 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white text-xs focus:outline-none focus:border-violet-500/50 transition font-mono placeholder:text-gray-600"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Transaction PIN</label>
+                          <input
+                            type="password"
+                            maxLength={4}
+                            required
+                            value={transferPin}
+                            onChange={(e) => setTransferPin(e.target.value.replace(/\D/g, ''))}
+                            placeholder="••••"
+                            className="w-full px-4 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white text-xs focus:outline-none focus:border-violet-500/50 transition text-center font-mono tracking-widest placeholder:text-gray-600"
+                          />
+                        </div>
+
+                        <div className="md:col-span-2 flex justify-end pt-2">
+                          <button
+                            type="submit"
+                            disabled={adminTransferMutation.isPending}
+                            className="px-6 py-2.5 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition shadow-md shadow-violet-600/10 flex items-center gap-2"
+                          >
+                            {adminTransferMutation.isPending ? 'Executing Transfer...' : 'Send Money'}
+                            <ArrowRight className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
-          ) : (
-            <div className="p-8 text-center text-gray-500 font-semibold italic border border-white/5 rounded-3xl bg-white/[0.01]">
-              No active customer accounts registered.
-            </div>
-          )}
-
-
-
+          </div>
         </div>
+      </div>
       )}
 
       {activeTab === 'history' && (
@@ -3616,7 +4123,9 @@ export const AdminPanel: React.FC = () => {
           {/* Rewards Exhaustion Warning Banner */}
           {(() => {
             const cashbackWalletBal = systemWallets?.find(w => w.id === 'e1b07221-50e5-4d76-bc34-31f41e57c605')?.runningBalance || 0;
-            const reservedRewards = Math.max(0, (rewardsAnalytics?.totalDisbursed || 0) - (rewardsAnalytics?.totalRedeemed || 0));
+            const reservedRewards = rewardsAnalytics?.totalUnredeemedBalance !== undefined 
+              ? rewardsAnalytics.totalUnredeemedBalance 
+              : Math.max(0, (rewardsAnalytics?.totalDisbursed || 0) - (rewardsAnalytics?.totalRedeemed || 0));
             const availableRewardBudget = Math.max(0, cashbackWalletBal - reservedRewards);
 
             return (
@@ -3880,45 +4389,7 @@ export const AdminPanel: React.FC = () => {
             </div>
           )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Spin Wheel Configuration */}
-            <div className="glass-panel p-6 rounded-3xl border border-white/5 bg-[#12121a]/85 space-y-4">
-              <h3 className="text-sm font-bold text-white">Lucky Spin Wheel Prizes</h3>
-              <p className="text-xs text-gray-400 leading-relaxed">
-                Configure segments, weights, points, and cashback rewards for the lucky wheel.
-              </p>
-              <textarea
-                value={spinWheelJson}
-                onChange={(e) => setSpinWheelJson(e.target.value)}
-                className="w-full h-64 p-4 rounded-xl bg-black/40 border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-violet-500/50"
-              />
-              <button
-                onClick={() => updateGamifyConfigMutation.mutate({ key: 'spin_wheel', value: spinWheelJson })}
-                className="w-full py-2.5 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-bold transition shadow-md"
-              >
-                Save Wheel Prizes JSON
-              </button>
-            </div>
 
-            {/* Scratch Card Configuration */}
-            <div className="glass-panel p-6 rounded-3xl border border-white/5 bg-[#12121a]/85 space-y-4">
-              <h3 className="text-sm font-bold text-white">Scratch Card Prizes</h3>
-              <p className="text-xs text-gray-400 leading-relaxed">
-                Configure reward pools and win probabilities for client scratch cards.
-              </p>
-              <textarea
-                value={scratchCardJson}
-                onChange={(e) => setScratchCardJson(e.target.value)}
-                className="w-full h-64 p-4 rounded-xl bg-black/40 border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-violet-500/50"
-              />
-              <button
-                onClick={() => updateGamifyConfigMutation.mutate({ key: 'scratch_card', value: scratchCardJson })}
-                className="w-full py-2.5 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-bold transition shadow-md"
-              >
-                Save Scratch Card JSON
-              </button>
-            </div>
-          </div>
 
         </div>
       )}
@@ -4290,6 +4761,507 @@ export const AdminPanel: React.FC = () => {
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+      {activeTab === 'support' && (
+        <div className="space-y-8 animate-fade-in font-sans">
+          {/* ADMIN SUPPORT DESK METRICS TOOLBAR */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="glass-panel p-5 rounded-2xl border border-white/5 bg-black/40 space-y-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Total Support Tickets</span>
+              <p className="font-display font-black text-2xl text-white">{(adminSupportTickets || []).length}</p>
+            </div>
+            <div className="glass-panel p-5 rounded-2xl border border-rose-500/20 bg-rose-950/20 space-y-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-rose-400">Urgent & High Priority</span>
+              <p className="font-display font-black text-2xl text-rose-300">
+                {(adminSupportTickets || []).filter((t: any) => t.priority === 'URGENT' || t.priority === 'HIGH').length}
+              </p>
+            </div>
+            <div className="glass-panel p-5 rounded-2xl border border-amber-500/20 bg-amber-950/20 space-y-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400">Pending Agent Action</span>
+              <p className="font-display font-black text-2xl text-amber-300">
+                {(adminSupportTickets || []).filter((t: any) => t.status === 'PENDING' || t.status === 'IN_PROGRESS' || !t.adminResponse).length}
+              </p>
+            </div>
+            <div className="glass-panel p-5 rounded-2xl border border-emerald-500/20 bg-emerald-950/20 space-y-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Resolved & Closed</span>
+              <p className="font-display font-black text-2xl text-emerald-300">
+                {(adminSupportTickets || []).filter((t: any) => t.status === 'RESOLVED' || t.status === 'CLOSED').length}
+              </p>
+            </div>
+          </div>
+
+          <div className="glass-panel p-6 rounded-3xl border border-white/5 bg-[#12121a]/85 space-y-5">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-white/5 pb-4">
+              <div>
+                <h2 className="text-lg font-black text-white tracking-tight flex items-center gap-2">
+                  <LifeBuoy className="h-5 w-5 text-violet-400" />
+                  Customer Support Desk & Ticket Escalations
+                </h2>
+                <p className="text-xs text-gray-400">
+                  Review submitted user support tickets, post official agent responses, and manage ticket status lifecycle.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => refetchAdminSupportTickets()}
+                  className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 transition text-xs font-bold flex items-center gap-1.5"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  <span>Refresh Queue</span>
+                </button>
+              </div>
+            </div>
+
+            {/* FILTER TOOLBAR */}
+            <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-2xl bg-black/40 border border-white/5">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold text-gray-400 mr-1">Status:</span>
+                {['ALL', 'PENDING', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'].map((st) => (
+                  <button
+                    key={st}
+                    onClick={() => setSupportFilterStatus(st)}
+                    className={`px-3 py-1 rounded-xl text-[10px] font-bold uppercase tracking-wider transition ${
+                      supportFilterStatus === st
+                        ? 'bg-violet-600 text-white shadow-md'
+                        : 'bg-white/5 text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    {st.replace('_', ' ')}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold text-gray-400 mr-1">Priority:</span>
+                {['ALL', 'URGENT', 'HIGH', 'MEDIUM', 'LOW'].map((pr) => (
+                  <button
+                    key={pr}
+                    onClick={() => setSupportFilterPriority(pr)}
+                    className={`px-3 py-1 rounded-xl text-[10px] font-bold uppercase tracking-wider transition ${
+                      supportFilterPriority === pr
+                        ? 'bg-fuchsia-600 text-white shadow-md'
+                        : 'bg-white/5 text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    {pr}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Tickets Grid */}
+            {adminSupportTickets && adminSupportTickets.length > 0 ? (
+              <div className="space-y-4 pt-2">
+                {adminSupportTickets
+                  .filter((t: any) => {
+                    const matchesStatus = supportFilterStatus === 'ALL' || t.status === supportFilterStatus;
+                    const matchesPriority = supportFilterPriority === 'ALL' || t.priority === supportFilterPriority;
+                    return matchesStatus && matchesPriority;
+                  })
+                  .map((t: any) => (
+                  <div 
+                    key={t.id}
+                    className="glass-panel p-6 rounded-2xl border border-white/5 bg-black/40 space-y-4 shadow-xl"
+                  >
+                    <div className="flex items-start justify-between gap-4 border-b border-white/5 pb-3 flex-wrap">
+                      <div className="space-y-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono text-[10px] font-bold text-violet-400 bg-violet-950 px-2 py-0.5 rounded border border-violet-800/40 shrink-0">
+                            #{t.id.substring(0, 8)}
+                          </span>
+                          <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-white/5 text-gray-300 border border-white/10 shrink-0">
+                            {t.category}
+                          </span>
+                          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border shrink-0 ${
+                            t.priority === 'URGENT' ? 'bg-rose-500/20 text-rose-300 border-rose-500/40' :
+                            t.priority === 'HIGH' ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' :
+                            'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                          }`}>
+                            {t.priority}
+                          </span>
+                          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border shrink-0 ${
+                            t.status === 'RESOLVED' || t.status === 'CLOSED' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' :
+                            'bg-violet-500/20 text-violet-300 border-violet-500/40'
+                          }`}>
+                            {t.status}
+                          </span>
+                        </div>
+                        <h3 className="font-bold text-sm text-white pt-1">{t.subject}</h3>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          setSelectedTicketId(t.id);
+                          setReplyStatus(t.status || 'RESOLVED');
+                          setReplyText(t.adminResponse || '');
+                        }}
+                        className="px-4 py-2 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-violet-600/20 flex items-center gap-1.5 shrink-0"
+                      >
+                        <MessageSquare className="h-3.5 w-3.5" />
+                        <span>Respond / Update</span>
+                      </button>
+                    </div>
+
+                    <p className="text-xs text-gray-300 leading-relaxed font-sans bg-white/[0.01] p-3.5 rounded-xl border border-white/5">
+                      {t.description}
+                    </p>
+
+                    {t.adminResponse && (
+                      <div className="p-3.5 rounded-xl bg-violet-950/30 border border-violet-800/40 space-y-1">
+                        <div className="flex items-center justify-between text-[10px] text-violet-400 font-bold">
+                          <span>Official Agent Response:</span>
+                          <span>{t.updatedAt ? new Date(t.updatedAt).toLocaleString() : ''}</span>
+                        </div>
+                        <p className="text-xs text-gray-200">{t.adminResponse}</p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12 text-gray-500 space-y-2">
+                <LifeBuoy className="h-8 w-8 mx-auto text-gray-600" />
+                <p className="text-xs font-semibold">No customer support tickets found matching criteria.</p>
+              </div>
+            )}
+          </div>
+
+          {/* TICKET RESPONSE MODAL */}
+          {selectedTicketId && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="glass-panel p-6 rounded-3xl border border-violet-500/30 bg-[#0e0e18] max-w-lg w-full space-y-5 shadow-2xl">
+                <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                  <h3 className="font-bold text-sm text-white flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4 text-violet-400" />
+                    Agent Response Desk
+                  </h3>
+                  <button
+                    onClick={() => setSelectedTicketId(null)}
+                    className="text-gray-400 hover:text-white text-xs font-bold"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-1.5">
+                      Update Ticket Status
+                    </label>
+                    <select
+                      value={replyStatus}
+                      onChange={(e) => setReplyStatus(e.target.value)}
+                      className="w-full p-3 bg-black/40 border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-violet-500"
+                    >
+                      <option value="PENDING">PENDING (Awaiting Info)</option>
+                      <option value="IN_PROGRESS">IN_PROGRESS (Investigating)</option>
+                      <option value="RESOLVED">RESOLVED (Issue Fixed)</option>
+                      <option value="CLOSED">CLOSED (Completed)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-1.5">
+                      Agent Response Message
+                    </label>
+                    <textarea
+                      value={replyText}
+                      onChange={(e) => setReplyText(e.target.value)}
+                      placeholder="Type official response to customer..."
+                      rows={4}
+                      className="w-full p-3 bg-black/40 border border-white/10 rounded-xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-violet-500 resize-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    onClick={() => setSelectedTicketId(null)}
+                    className="px-4 py-2 bg-white/5 hover:bg-white/10 text-gray-400 rounded-xl text-xs font-bold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (!replyText.trim()) return;
+                      adminReplyTicketMutation.mutate({
+                        ticketId: selectedTicketId,
+                        status: replyStatus,
+                        response: replyText.trim()
+                      });
+                    }}
+                    disabled={adminReplyTicketMutation.isPending}
+                    className="px-5 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-violet-600/20"
+                  >
+                    {adminReplyTicketMutation.isPending ? 'Sending...' : 'Post Response'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* AI OPERATIONS ASSISTANT STANDALONE TAB */}
+      {activeTab === 'ai-copilot' && (
+        <div className="space-y-8 animate-fade-in font-sans">
+          <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-violet-500/30 bg-[#0e0e18]/95 space-y-6 shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-96 h-96 bg-violet-600/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
+
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-white/5 pb-4">
+              <div className="space-y-1">
+                <h3 className="font-display font-black text-xl text-white flex items-center gap-2.5 tracking-tight">
+                  <div className="p-2 rounded-xl bg-gradient-to-tr from-violet-600 to-fuchsia-600 text-white shadow-md glow-purple">
+                    <Sparkles className="h-5 w-5" />
+                  </div>
+                  AI Operations Assistant
+                  <span className="text-[9px] font-mono font-black uppercase px-2.5 py-0.5 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/30">
+                    ENTERPRISE RAG INTELLIGENCE
+                  </span>
+                </h3>
+                <p className="text-xs text-gray-400">
+                  Search treasury procedures, ledger operations, compliance, support workflows and platform documentation.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {/* Search Bar */}
+              <div className="flex flex-col sm:flex-row gap-3">
+                <input
+                  type="text"
+                  value={adminRagQuery}
+                  onChange={(e) => setAdminRagQuery(e.target.value)}
+                  onKeyDown={async (e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handlePerformRagQuery(adminRagQuery, {
+                        activeTab,
+                        selectedTicket: selectedTicketId,
+                        selectedHistoryTx: selectedHistoryTx?.transactionId
+                      });
+                    }
+                  }}
+                  placeholder="Ask an operational question (e.g. 'Why is Treasury Health showing Warning?', 'Why was today's interest distribution paused?', 'Investigate reconciliation mismatch')..."
+                  className="flex-1 p-3.5 bg-black/60 border border-white/10 rounded-2xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-violet-500 transition-all font-sans shadow-inner"
+                />
+                <button
+                  onClick={() => {
+                    handlePerformRagQuery(adminRagQuery, {
+                      activeTab,
+                      selectedTicket: selectedTicketId,
+                      selectedHistoryTx: selectedHistoryTx?.transactionId
+                    });
+                  }}
+                  disabled={isAdminRagLoading}
+                  className="px-6 py-3.5 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white rounded-2xl text-xs font-black transition-all shadow-lg shadow-violet-600/25 flex items-center justify-center gap-2 shrink-0 cursor-pointer"
+                >
+                  {isAdminRagLoading ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      <span>Evaluating Business Rules...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4" />
+                      <span>Investigate</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Quick Topics & Investigation Presets Bar */}
+              <div className="space-y-2">
+                <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider">Investigation Presets & Quick Topics</span>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { label: 'Treasury Warning', query: 'Why is Treasury Health showing Warning?' },
+                    { label: 'Interest Paused', query: 'Why was today\'s interest distribution paused?' },
+                    { label: 'Cashback Rejection', query: 'Why didn\'t cashback get distributed?' },
+                    { label: 'Yield Reserve', query: 'Why is Yield Reserve decreasing?' },
+                    { label: 'Failed Transfers', query: 'Why did this transfer fail?' },
+                    { label: 'Reconciliation', query: 'Why is reconciliation failing?' },
+                    { label: 'Investment Yield', query: 'Why did this investment mature with less profit?' },
+                    { label: 'Today\'s Activity', query: 'Explain today\'s treasury activity' },
+                    { label: 'Wallet Explorer', query: 'Explain Wallet Explorer and system money flow' },
+                    { label: 'Investigate Ticket', query: 'Investigate support ticket escalation' }
+                  ].map((topic, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        setAdminRagQuery(topic.query);
+                        handlePerformRagQuery(topic.query, {
+                          activeTab,
+                          selectedTicket: selectedTicketId,
+                          selectedHistoryTx: selectedHistoryTx?.transactionId
+                        });
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-violet-600/20 border border-white/10 hover:border-violet-500/30 text-xs font-bold text-gray-300 hover:text-white transition-all cursor-pointer flex items-center gap-1.5"
+                    >
+                      <span className="h-1.5 w-1.5 rounded-full bg-violet-400" />
+                      {topic.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* AI Operations Assistant Answer Output */}
+              {adminRagResult && (
+                <div className="p-6 rounded-2xl bg-black/60 border border-violet-500/30 text-xs text-gray-200 leading-relaxed space-y-6 animate-fade-in font-sans shadow-2xl">
+                  
+                  {/* OPERATIONAL DECISION ENGINE METADATA BAR */}
+                  {adminDecisionData && (
+                    <div className="p-4 rounded-2xl bg-violet-950/30 border border-violet-500/30 space-y-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
+                        <div className="flex items-center gap-3">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">Operational State:</span>
+                          <span className={`px-3 py-1 rounded-full text-xs font-black tracking-wide border flex items-center gap-1.5 ${
+                            adminDecisionData.operationalState === 'CRITICAL'
+                              ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 glow-red'
+                              : adminDecisionData.operationalState === 'WARNING'
+                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 glow-amber'
+                              : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 glow-green'
+                          }`}>
+                            <ShieldAlert className="h-3.5 w-3.5" />
+                            {adminDecisionData.operationalState}
+                          </span>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono">
+                          <span className="px-2.5 py-1 rounded-lg bg-black/40 border border-white/10 text-gray-300">
+                            📅 Freshness: <strong className="text-violet-300">{adminDecisionData.dataTimestamp || 'Live UTC'}</strong>
+                          </span>
+                          <span className="px-2.5 py-1 rounded-lg bg-black/40 border border-white/10 text-gray-300">
+                            🔌 Treasury API: <strong className={adminDecisionData.apiHealthStatus === 'Available' ? 'text-emerald-400' : 'text-rose-400'}>{adminDecisionData.apiHealthStatus || 'Available'}</strong>
+                          </span>
+                          <span className="px-2.5 py-1 rounded-lg bg-black/40 border border-white/10 text-gray-300">
+                            📑 Doc Fallback: <strong className={adminDecisionData.usingDocFallback ? 'text-amber-300' : 'text-gray-400'}>{adminDecisionData.usingDocFallback ? 'Yes' : 'No'}</strong>
+                          </span>
+                          <span className="px-2.5 py-1 rounded-lg bg-violet-900/40 border border-violet-500/30 text-violet-200">
+                            🎯 Confidence: <strong>{adminDecisionData.confidenceDetails || 'HIGH'}</strong>
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* RULE EVALUATION TABLE */}
+                      {adminDecisionData.ruleEvaluationTable && adminDecisionData.ruleEvaluationTable.length > 0 && (
+                        <div className="space-y-2">
+                          <h4 className="text-[11px] font-black uppercase text-violet-300 tracking-wider flex items-center gap-1.5">
+                            <Activity className="h-3.5 w-3.5 text-violet-400" />
+                            Enterprise Business Rule Evaluation Table
+                          </h4>
+                          <div className="overflow-x-auto rounded-xl border border-white/10 bg-black/50">
+                            <table className="w-full text-left border-collapse text-[11px]">
+                              <thead>
+                                <tr className="border-b border-white/10 bg-white/5 text-gray-400 font-bold uppercase text-[9px]">
+                                  <th className="p-2.5">Rule ID & Name</th>
+                                  <th className="p-2.5">Evaluation Status</th>
+                                  <th className="p-2.5">Evaluated Metric Result</th>
+                                  <th className="p-2.5">Severity</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-white/5 text-gray-300">
+                                {adminDecisionData.ruleEvaluationTable.map((rule: any, rIdx: number) => (
+                                  <tr key={rIdx} className="hover:bg-white/[0.02]">
+                                    <td className="p-2.5 font-bold text-white flex items-center gap-1.5">
+                                      <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-white/10 text-gray-300">{rule.ruleId}</span>
+                                      {rule.ruleName}
+                                    </td>
+                                    <td className="p-2.5">
+                                      {rule.passed ? (
+                                        <span className="text-emerald-400 font-bold flex items-center gap-1">
+                                          <CheckCircle2 className="h-3 w-3" /> Passed
+                                        </span>
+                                      ) : (
+                                        <span className="text-rose-400 font-bold flex items-center gap-1">
+                                          <AlertTriangle className="h-3 w-3" /> Failed
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className="p-2.5 font-mono text-xs">{rule.evaluatedResult}</td>
+                                    <td className="p-2.5 font-bold">
+                                      <span className={`px-2 py-0.5 rounded text-[9px] ${
+                                        rule.severity === 'CRITICAL' ? 'bg-rose-500/20 text-rose-300' :
+                                        rule.severity === 'WARNING' ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'
+                                      }`}>
+                                        {rule.severity}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* OPERATIONAL ANALYSIS STEP-BY-STEP */}
+                      {adminDecisionData.operationalAnalysis && adminDecisionData.operationalAnalysis.length > 0 && (
+                        <div className="space-y-1.5 pt-2">
+                          <h4 className="text-[11px] font-black uppercase text-violet-300 tracking-wider flex items-center gap-1.5">
+                            <Layers className="h-3.5 w-3.5 text-violet-400" />
+                            Operational Analysis (Business Logic Sequence)
+                          </h4>
+                          <div className="p-3.5 rounded-xl bg-black/40 border border-white/5 space-y-1 text-gray-300 font-mono text-[11px]">
+                            {adminDecisionData.operationalAnalysis.map((step: string, sIdx: number) => (
+                              <div key={sIdx} className="leading-relaxed flex items-start gap-2">
+                                <span className="text-violet-400 font-bold shrink-0">{sIdx + 1}.</span>
+                                <span>{step.replace(/^\d+\.\s*/, '')}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* CONTEXT-AWARE RECOMMENDED ACTIONS */}
+                      {adminDecisionData.contextualRecommendations && adminDecisionData.contextualRecommendations.length > 0 && (
+                        <div className="space-y-1.5 pt-2">
+                          <h4 className="text-[11px] font-black uppercase text-amber-300 tracking-wider flex items-center gap-1.5">
+                            <Sparkles className="h-3.5 w-3.5 text-amber-400" />
+                            Context-Aware Administrator Recommendations
+                          </h4>
+                          <div className="p-3.5 rounded-xl bg-amber-950/20 border border-amber-500/30 space-y-1.5 text-amber-200 text-xs">
+                            {adminDecisionData.contextualRecommendations.map((rec: string, rIdx: number) => (
+                              <div key={rIdx} className="flex items-center gap-2 font-bold">
+                                <span className="h-1.5 w-1.5 rounded-full bg-amber-400 shrink-0" />
+                                <span>{rec}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between border-b border-white/10 pb-3 pt-2">
+                    <span className="text-xs font-black text-violet-300 uppercase tracking-wider flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                      Structured Operational Investigation Report
+                    </span>
+                    {adminRagSource && (
+                      <span className="text-[10px] font-mono font-bold px-2.5 py-1 rounded-lg bg-violet-900/60 text-violet-200 border border-violet-700/50">
+                        Docs: {adminRagSource}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="space-y-3 font-sans text-xs text-gray-300">
+                    <div className="p-5 rounded-2xl bg-black/40 border border-violet-500/20 leading-relaxed text-gray-200 font-sans shadow-2xl">
+                      <MarkdownReportRenderer content={adminRagResult} />
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-white/5 flex items-center justify-between text-[10px] text-gray-400 font-mono">
+                    <span>Knowledge Sources: {adminRagSource || 'treasury.md, yield_reserve.md, reconciliation.md'}</span>
+                    <span className="text-emerald-400 font-bold">✓ Enterprise Banking Operations Copilot</span>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

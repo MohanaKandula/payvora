@@ -13,6 +13,7 @@ import { RecurringScheduler } from './pages/RecurringScheduler';
 import { Profile } from './pages/Profile';
 import { Rewards } from './pages/Rewards';
 import { Investments } from './pages/Investments';
+import { HelpCenter } from './pages/HelpCenter';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Layout } from './components/Layout';
 
@@ -142,6 +143,16 @@ export const App: React.FC = () => {
               <ProtectedRoute>
                 <Layout>
                   <AdminPanel />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/help"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <HelpCenter />
                 </Layout>
               </ProtectedRoute>
             }

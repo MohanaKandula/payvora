@@ -11,4 +11,5 @@ import java.util.UUID;
 public interface NotificationRepository extends JpaRepository<Notification, UUID> {
     List<Notification> findByAccountIdOrderByCreatedAtDesc(UUID accountId);
     long countByAccountIdAndIsReadFalse(UUID accountId);
+    long countByAccountIdAndTitleAndCreatedAtAfter(UUID accountId, String title, java.time.LocalDateTime createdAt);
 }

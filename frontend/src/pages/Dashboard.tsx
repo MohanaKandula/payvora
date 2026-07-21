@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import jsQR from 'jsqr';
 import { axiosInstance } from '../api/axiosInstance';
+import { APP_PUBLIC_URL } from '../config/appConfig';
 import { 
   ArrowDownRight, ArrowUpRight, 
   Wallet, RefreshCw, AlertCircle, CheckCircle2, X,
@@ -1383,29 +1384,14 @@ export const Dashboard: React.FC = () => {
               <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] uppercase font-extrabold text-gray-500 tracking-wider">Rewards Wallet</span>
-                  {rewardWallet && (
-                    <span className="text-[9px] font-black uppercase text-violet-400 bg-violet-600/10 px-2 py-0.5 rounded border border-violet-500/20">
-                      {rewardWallet.loyaltyLevel} TIER
-                    </span>
-                  )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <span className="text-[10px] text-gray-500 block">Cashback Balance</span>
-                    <span className="text-base font-display font-bold text-violet-400 flex items-center gap-1">
-                      <Coins className="h-4 w-4" />
-                      <span>${rewardWallet?.cashbackBalance.toFixed(2) || '0.00'}</span>
-                    </span>
-                  </div>
-
-                  <div className="space-y-1">
-                    <span className="text-[10px] text-gray-500 block">Loyalty Points</span>
-                    <span className="text-base font-display font-bold text-blue-400 flex items-center gap-1">
-                      <Award className="h-4 w-4" />
-                      <span>{rewardWallet?.loyaltyPoints || 0} pts</span>
-                    </span>
-                  </div>
+                <div className="space-y-1">
+                  <span className="text-[10px] text-gray-500 block">Cashback Balance</span>
+                  <span className="text-base font-display font-bold text-violet-400 flex items-center gap-1">
+                    <Coins className="h-4 w-4" />
+                    <span>${rewardWallet?.cashbackBalance.toFixed(2) || '0.00'}</span>
+                  </span>
                 </div>
               </div>
 
@@ -1736,6 +1722,22 @@ export const Dashboard: React.FC = () => {
                   />
                 </div>
 
+                {/* 6. Platform Fee breakdown */}
+                <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5 space-y-1 text-xs font-mono">
+                  <div className="flex justify-between text-gray-400">
+                    <span>Recharge Plan:</span>
+                    <span>${parseFloat(rechargeAmount || '0').toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-amber-400">
+                    <span>Platform Fee:</span>
+                    <span>+$1.00</span>
+                  </div>
+                  <div className="flex justify-between font-bold text-white border-t border-white/5 pt-1.5 mt-1">
+                    <span>Total Debit:</span>
+                    <span>${(parseFloat(rechargeAmount || '0') + 1.00).toFixed(2)}</span>
+                  </div>
+                </div>
+
                 {/* Confirm Buttons */}
                 <div className="flex gap-4 mt-6">
                   <button
@@ -1749,7 +1751,7 @@ export const Dashboard: React.FC = () => {
                     type="submit"
                     className="flex-1 py-3 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white font-semibold rounded-xl transition-all shadow-md text-xs flex items-center justify-center gap-2"
                   >
-                    Pay ${parseFloat(rechargeAmount || '0').toFixed(2)}
+                    Pay ${(parseFloat(rechargeAmount || '0') + 1.00).toFixed(2)}
                   </button>
                 </div>
               </form>
@@ -1950,11 +1952,19 @@ export const Dashboard: React.FC = () => {
             <div className="flex gap-3">
               <a
                 href={`https://api.whatsapp.com/send?text=${encodeURIComponent(
-                  `Hey! Scan my QR code to pay me instantly on PayVora: Phone number: ${account.phoneNumber || account.username}. Or click here to start: ${window.location.origin}/dashboard`
+                  `PAYVORA DIGITAL BANKING - INSTANT PAYMENT REQUEST\n\n` +
+                  `Payee Name: ${account.fullName}\n` +
+                  `Phone / Identifier: ${account.phoneNumber || account.username}\n` +
+                  `Account ID: ${account.id}\n` +
+                  `Issuing Bank: PayVora Neobank Core\n\n` +
+                  `Send zero-fee instant payments directly via PayVora:\n` +
+                  `${APP_PUBLIC_URL}/pay?recipient=${encodeURIComponent(account.phoneNumber || account.username)}\n\n` +
+                  `----------------------------------------\n` +
+                  `Secured & Processed by PayVora Event-Sourced Ledger`
                 )}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex-1 py-2.5 bg-[#25D366] hover:bg-[#20ba5a] text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-md"
+                className="flex-1 py-2.5 bg-[#25D366] hover:bg-[#20ba5a] text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-md cursor-pointer"
               >
                 <Share2 className="h-4 w-4" />
                 <span>Share WhatsApp</span>

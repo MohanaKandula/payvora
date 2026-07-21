@@ -34,4 +34,56 @@ public class RewardWallet {
     
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
+
+    @Column(name = "last_spin_date")
+    private java.time.LocalDate lastSpinDate;
+
+    @Column(name = "checkin_streak", nullable = false)
+    private int checkinStreak = 0;
+
+    @Transient
+    private boolean claimedToday;
+
+    @Transient
+    private boolean spunToday;
+
+    public java.time.LocalDate getLastSpinDate() {
+        return lastSpinDate;
+    }
+
+    public void setLastSpinDate(java.time.LocalDate lastSpinDate) {
+        this.lastSpinDate = lastSpinDate;
+    }
+
+    public boolean isSpunToday() {
+        return spunToday;
+    }
+
+    public boolean getSpunToday() {
+        return spunToday;
+    }
+
+    public void setSpunToday(boolean spunToday) {
+        this.spunToday = spunToday;
+    }
+
+    public int getCheckinStreak() {
+        return checkinStreak;
+    }
+
+    public void setCheckinStreak(int checkinStreak) {
+        this.checkinStreak = checkinStreak;
+    }
+
+    public boolean isClaimedToday() {
+        return claimedToday;
+    }
+
+    public boolean getClaimedToday() {
+        return claimedToday;
+    }
+
+    public void setClaimedToday(boolean claimedToday) {
+        this.claimedToday = claimedToday;
+    }
 }

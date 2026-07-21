@@ -53,6 +53,16 @@ public class LedgerConcurrencyIntegrationTest {
         ledgerEntryRepository.deleteAll();
         ledgerAccountRepository.deleteAll();
 
+        // Seed system settlement/clearing account to prevent concurrent creation race condition
+        UUID clearingId = UUID.fromString("e1b07221-50e5-4d76-bc34-31f41e57c604");
+        LedgerAccount clearingAccount = LedgerAccount.builder()
+                .id(clearingId)
+                .status("ACTIVE")
+                .runningBalance(BigDecimal.ZERO.setScale(4))
+                .currency("USD")
+                .build();
+        ledgerAccountRepository.save(clearingAccount);
+
         testAccountId = UUID.randomUUID();
         LedgerAccount account = LedgerAccount.builder()
                 .id(testAccountId)
@@ -111,7 +121,8 @@ public class LedgerConcurrencyIntegrationTest {
                     failedCount.incrementAndGet();
                 }
             } catch (ExecutionException e) {
-                // Ignore
+                System.err.println("Thread execution exception: " + e.getCause());
+                e.printStackTrace();
             }
         }
 
@@ -121,7 +132,9 @@ public class LedgerConcurrencyIntegrationTest {
         LedgerAccount finalAccount = ledgerAccountRepository.findById(testAccountId).orElseThrow();
         assertEquals(0, new BigDecimal("10.0000").compareTo(finalAccount.getRunningBalance()), 
                 "Final balance should be exactly 10.00");
-        assertEquals(3, ledgerEntryRepository.count(), "Exactly 3 ledger entries should be persisted");
+        assertEquals(6, ledgerEntryRepository.count(), "Exactly 6 ledger entries (3 DEBIT, 3 CREDIT) should be persisted");
+        assertEquals(3, ledgerEntryRepository.findByAccountIdOrderByCreatedAtDesc(testAccountId).size(), 
+                "Exactly 3 ledger entries for test account should be persisted");
     }
 
     @Test
@@ -154,6 +167,8 @@ public class LedgerConcurrencyIntegrationTest {
         assertEquals(0, response1.getSourceBalanceAfter().compareTo(response2.getSourceBalanceAfter()), 
                 "Idempotent response must match first call");
 
-        assertEquals(1, ledgerEntryRepository.count(), "Only 1 ledger entry should have been created");
+        assertEquals(2, ledgerEntryRepository.count(), "Only 2 ledger entries (1 DEBIT, 1 CREDIT) should have been created");
+        assertEquals(1, ledgerEntryRepository.findByAccountIdOrderByCreatedAtDesc(testAccountId).size(), 
+                "Only 1 ledger entry for test account should have been created");
     }
 }

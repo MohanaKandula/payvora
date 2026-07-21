@@ -28,11 +28,17 @@ spring:
           filters:
             - name: JwtValidationFilter
 
+        # Public Customer Support RAG Query Route (No JWT Filter Required)
+        - id: support-service-public
+          uri: ${TRANSACTION_SERVICE_URL:http://localhost:8083}
+          predicates:
+            - Path=/api/support/rag/**
+
         # Transaction Service Routes (JWT Filter Applied)
         - id: transaction-service
           uri: ${TRANSACTION_SERVICE_URL:http://localhost:8083}
           predicates:
-            - Path=/api/transactions/**, /api/rewards/**, /api/vault/**, /api/treasury/**
+            - Path=/api/transactions/**, /api/rewards/**, /api/vault/**, /api/treasury/**, /api/support/tickets/**, /api/support/admin/**
           filters:
             - name: JwtValidationFilter
 

@@ -90,11 +90,7 @@ public class YieldEngine {
         }
 
         InvestmentSettings settings = investmentSettingsRepository.findById("GLOBAL")
-                .orElse(InvestmentSettings.builder()
-                        .id("GLOBAL")
-                        .apyRate(BigDecimal.valueOf(4.50))
-                        .yieldEnginePaused(false)
-                        .build());
+                .orElseThrow(() -> new IllegalStateException("Treasury Configuration Missing: APY settings must be configured by Administrator before executing Yield Engine."));
 
         if (settings.isYieldEnginePaused()) {
             log.warn("[Yield Engine] Yield accrual is paused by admin. Skipping run.");
@@ -112,9 +108,14 @@ public class YieldEngine {
             return;
         }
 
-        BigDecimal grossApy = BigDecimal.valueOf(5.50);
         BigDecimal userApy = settings.getApyRate();
-        BigDecimal spreadApy = grossApy.subtract(userApy);
+        if (userApy == null || userApy.compareTo(BigDecimal.ZERO) <= 0) {
+            log.error("[Yield Engine] Configured User APY rate is invalid: {}", userApy);
+            return;
+        }
+
+        BigDecimal grossApy = settings.getGrossApyRate() != null ? settings.getGrossApyRate() : userApy.add(BigDecimal.valueOf(1.00));
+        BigDecimal spreadApy = settings.getPlatformSpread() != null ? settings.getPlatformSpread() : grossApy.subtract(userApy);
 
         BigDecimal grossRate = grossApy.divide(BigDecimal.valueOf(100), 8, RoundingMode.HALF_UP)
                                        .divide(BigDecimal.valueOf(365), 8, RoundingMode.HALF_UP);
@@ -237,11 +238,7 @@ public class YieldEngine {
         }
 
         InvestmentSettings settings = investmentSettingsRepository.findById("GLOBAL")
-                .orElse(InvestmentSettings.builder()
-                        .id("GLOBAL")
-                        .apyRate(BigDecimal.valueOf(4.50))
-                        .yieldEnginePaused(false)
-                        .build());
+                .orElseThrow(() -> new IllegalStateException("Treasury Configuration Missing: APY settings must be configured by Administrator before executing Yield Engine."));
 
         if (settings.isYieldEnginePaused()) {
             log.warn("[Yield Engine] Yield accrual is paused by admin. Skipping run.");
@@ -251,9 +248,14 @@ public class YieldEngine {
         List<InvestmentAccount> activeInvestments = investmentAccountRepository.findByStatus("ACTIVE");
         log.info("[Yield Engine] Found {} active investment accounts for daily interest credit.", activeInvestments.size());
 
-        BigDecimal grossApy = BigDecimal.valueOf(5.50);
         BigDecimal userApy = settings.getApyRate();
-        BigDecimal spreadApy = grossApy.subtract(userApy);
+        if (userApy == null || userApy.compareTo(BigDecimal.ZERO) <= 0) {
+            log.error("[Yield Engine] Configured User APY rate is invalid: {}", userApy);
+            return;
+        }
+
+        BigDecimal grossApy = settings.getGrossApyRate() != null ? settings.getGrossApyRate() : userApy.add(BigDecimal.valueOf(1.00));
+        BigDecimal spreadApy = settings.getPlatformSpread() != null ? settings.getPlatformSpread() : grossApy.subtract(userApy);
 
         BigDecimal grossRate = grossApy.divide(BigDecimal.valueOf(100), 8, RoundingMode.HALF_UP)
                                        .divide(BigDecimal.valueOf(365), 8, RoundingMode.HALF_UP);

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { axiosInstance } from '../api/axiosInstance';
+import { APP_PUBLIC_URL } from '../config/appConfig';
 import { 
   ArrowDownRight, ArrowUpRight,
   AlertCircle, ChevronLeft, ChevronRight,
@@ -44,8 +45,10 @@ interface AccountDetails {
 const TransactionRow: React.FC<{ 
   entry: LedgerEntryDto; 
   currentAccountId: string;
+  activeOffers: any[];
+  allOffers: any[];
   onRowClick: (entry: LedgerEntryDto, tx: TransactionDetails | null, counterparty: AccountDetails | null) => void;
-}> = ({ entry, currentAccountId, onRowClick }) => {
+}> = ({ entry, currentAccountId, activeOffers, allOffers, onRowClick }) => {
   // Fetch transaction details
   const { data: tx } = useQuery<TransactionDetails>({
     queryKey: ['transaction-detail', entry.transactionId],
@@ -114,10 +117,15 @@ const TransactionRow: React.FC<{
       const isRedeem = entry.entryType === 'DEBIT';
       const offerId = (entry as any).offerId;
       const getOfferTitle = (oId: string | null) => {
-        if (!oId) return 'Cashback Credit Earned';
-        if (oId === '77777777-7777-7777-7777-777777777777') return 'Referral Signup Reward';
-        if (oId === '11111111-1111-1111-1111-111111111111') return 'First Transaction Reward';
-        return 'Cashback Credit Earned';
+        if (!oId) return 'Manual Reward / Game Win';
+        const strId = String(oId).toLowerCase();
+        if (strId === '77777777-7777-7777-7777-777777777777') return 'Referral Signup Reward';
+        if (strId === '11111111-1111-1111-1111-111111111111') return 'First Transaction Reward';
+        if (strId === '22222222-2222-2222-2222-222222222222') return 'Recharge Offer';
+        if (strId === '33333333-3333-3333-3333-333333333333') return 'Bill Payment Offer';
+        const found = (activeOffers || []).find((o: any) => String(o.id).toLowerCase() === strId) ||
+                      (allOffers || []).find((o: any) => String(o.id).toLowerCase() === strId);
+        return found ? found.title : 'Cashback Credit Earned';
       };
       return {
         bg: isRedeem ? 'bg-orange-950/20 text-orange-450 border-orange-500/20' : 'bg-emerald-950/20 text-emerald-450 border-emerald-500/20',
@@ -310,7 +318,6 @@ export const Transactions: React.FC = () => {
   } | null>(null);
   
   const [toastMsg, setToastMsg] = useState('');
-  const [ticketRaised, setTicketRaised] = useState(false);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
 
   // Extract accountId and check admin role from localStorage
@@ -354,6 +361,24 @@ export const Transactions: React.FC = () => {
       return response.data;
     },
     enabled: !!accountId,
+  });
+
+  // Fetch active and all offers for dynamic cashback title resolution
+  const { data: activeOffers = [] } = useQuery<any[]>({
+    queryKey: ['rewards-offers'],
+    queryFn: async () => {
+      const response = await axiosInstance.get('/api/rewards/offers');
+      return response.data;
+    }
+  });
+
+  const { data: allOffers = [] } = useQuery<any[]>({
+    queryKey: ['rewards-admin-offers'],
+    queryFn: async () => {
+      const response = await axiosInstance.get('/api/rewards/admin/offers');
+      return response.data;
+    },
+    enabled: isAdmin
   });
 
   // Fetch real failed transactions from transaction service
@@ -425,17 +450,33 @@ export const Transactions: React.FC = () => {
   const handleShareReceipt = () => {
     if (!selectedTx) return;
     const utr = 'UTR' + selectedTx.entry.transactionId.substring(0, 8).toUpperCase();
-    navigator.clipboard.writeText(`Transaction Successful! Amount: $${selectedTx.entry.amount.toFixed(2)}. UTR: ${utr}. Mapped on Event-Sourced Ledger.`);
-    showToast('Receipt details copied to clipboard!');
-  };
+    const isOutgoing = selectedTx.entry.entryType === 'DEBIT';
+    const amountStr = `$${selectedTx.entry.amount.toFixed(2)}`;
+    const counterpartyName = selectedTx.counterparty?.fullName || 'Registered User';
+    const dateStr = new Date(selectedTx.entry.createdAt).toLocaleString();
+    const receiptLink = `${APP_PUBLIC_URL}/receipt/${utr}`;
 
-  const handleRaiseIssue = () => {
-    setTicketRaised(true);
-    setTimeout(() => {
-      setTicketRaised(false);
-      setSelectedTx(null);
-      showToast('Support ticket #ST-92182 raised successfully.');
-    }, 2000);
+    const textMsg = 
+      `PAYVORA DIGITAL BANKING - OFFICIAL RECEIPT\n\n` +
+      `Status: SUCCESSFUL\n` +
+      `Amount: ${amountStr}\n` +
+      `Transaction Type: ${isOutgoing ? 'Sent Payment' : 'Received Payment'}\n` +
+      `Counterparty: ${counterpartyName}\n` +
+      `UTR Reference: ${utr}\n` +
+      `Date & Time: ${dateStr}\n` +
+      `Issuing Bank: PayVora Neobank Core\n\n` +
+      `Verify Receipt:\n` +
+      `${receiptLink}\n\n` +
+      `----------------------------------------\n` +
+      `Verified & Cryptographically Secured by PayVora Event-Sourced Ledger`;
+
+    try {
+      navigator.clipboard.writeText(textMsg);
+    } catch (e) {}
+
+    const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(textMsg)}`;
+    window.open(waUrl, '_blank');
+    showToast('Opening WhatsApp with digital receipt!');
   };
 
   const cbEntries = cashbackHistory.map((cb: any) => ({
@@ -771,6 +812,8 @@ export const Transactions: React.FC = () => {
                   key={entry.id} 
                   entry={entry} 
                   currentAccountId={accountId} 
+                  activeOffers={activeOffers}
+                  allOffers={allOffers}
                   onRowClick={(entry, txDetail, counterparty) => setSelectedTx({ entry, txDetail, counterparty })}
                 />
               ))}
@@ -908,30 +951,21 @@ export const Transactions: React.FC = () => {
             </div>
 
             {/* Modal Actions */}
-            <div className="mt-8 grid grid-cols-3 gap-2.5">
+            <div className="mt-8 grid grid-cols-2 gap-3">
               <button
                 onClick={handleDownloadReceipt}
-                className="flex flex-col items-center gap-1.5 p-3 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-violet-500/30 hover:bg-violet-500/5 transition-all text-gray-400 hover:text-white"
+                className="flex flex-col items-center justify-center gap-1.5 py-3 px-4 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-violet-500/30 hover:bg-violet-500/5 transition-all text-gray-400 hover:text-white cursor-pointer"
               >
                 <Download className="h-4.5 w-4.5" />
-                <span className="text-[10px] font-bold">Download</span>
+                <span className="text-xs font-bold">Download</span>
               </button>
 
               <button
                 onClick={handleShareReceipt}
-                className="flex flex-col items-center gap-1.5 p-3 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-violet-500/30 hover:bg-violet-500/5 transition-all text-gray-400 hover:text-white"
+                className="flex flex-col items-center justify-center gap-1.5 py-3 px-4 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-violet-500/30 hover:bg-violet-500/5 transition-all text-gray-400 hover:text-white cursor-pointer"
               >
                 <Share2 className="h-4.5 w-4.5" />
-                <span className="text-[10px] font-bold">Share</span>
-              </button>
-
-              <button
-                onClick={handleRaiseIssue}
-                disabled={ticketRaised}
-                className="flex flex-col items-center gap-1.5 p-3 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-rose-500/30 hover:bg-rose-500/5 transition-all text-gray-400 hover:text-rose-400 disabled:opacity-50"
-              >
-                <HelpCircle className="h-4.5 w-4.5" />
-                <span className="text-[10px] font-bold">{ticketRaised ? 'Raising...' : 'Raise Issue'}</span>
+                <span className="text-xs font-bold">Share</span>
               </button>
             </div>
           </div>

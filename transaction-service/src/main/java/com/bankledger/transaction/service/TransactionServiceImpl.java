@@ -479,6 +479,49 @@ public class TransactionServiceImpl implements TransactionService {
                 log.error("Failed to generate transaction live notification", ex);
             }
 
+            // Collect $1.00 Platform Fee for Bill & Utility Payments
+            try {
+                String catUpper = category.toUpperCase();
+                if ((catUpper.startsWith("BILL") || catUpper.startsWith("UTILITY") || catUpper.contains("BILL") || catUpper.contains("UTILITY")) 
+                    && transaction.getSourceAccountId() != null && !isSystemWallet(transaction.getSourceAccountId())) {
+                    
+                    UUID platformRevenueWalletId = UUID.fromString("e1b07221-50e5-4d76-bc34-31f41e57c602");
+                    UUID feeTxId = UUID.randomUUID();
+                    String feeKey = "FEE_" + transaction.getId().toString();
+                    java.math.BigDecimal platformFee = new java.math.BigDecimal("1.00");
+
+                    LedgerTransactionRequest feeReq = LedgerTransactionRequest.builder()
+                            .transactionId(feeTxId)
+                            .sourceAccountId(transaction.getSourceAccountId())
+                            .targetAccountId(platformRevenueWalletId)
+                            .amount(platformFee)
+                            .currency(transaction.getCurrency())
+                            .idempotencyKey(feeKey)
+                            .type("TRANSFER")
+                            .category("PLATFORM_FEE")
+                            .build();
+
+                    LedgerTransactionResponse feeRes = ledgerClient.processTransaction(feeReq);
+                    if ("SUCCESS".equals(feeRes.getStatus())) {
+                        Transaction feeTx = Transaction.builder()
+                                .id(feeTxId)
+                                .sourceAccountId(transaction.getSourceAccountId())
+                                .targetAccountId(platformRevenueWalletId)
+                                .amount(platformFee)
+                                .currency(transaction.getCurrency())
+                                .transactionType(TransactionType.TRANSFER)
+                                .status(TransactionStatus.COMPLETED)
+                                .idempotencyKey(feeKey)
+                                .category("PLATFORM_FEE")
+                                .build();
+                        transactionRepository.save(feeTx);
+                        log.info("Successfully credited $1.00 platform fee to Platform Revenue Wallet for bill payment {}", txId);
+                    }
+                }
+            } catch (Exception ex) {
+                log.error("Failed to collect $1.00 platform fee for bill payment", ex);
+            }
+
             // Trigger Cashback Rewards Rule Engine Hook
             try {
                 UUID rewardUser = (type == TransactionType.DEPOSIT) ? transaction.getTargetAccountId() : transaction.getSourceAccountId();

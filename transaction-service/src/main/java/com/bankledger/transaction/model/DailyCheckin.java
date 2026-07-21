@@ -30,4 +30,10 @@ public class DailyCheckin {
     
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
+
+    @Transient
+    private double cashbackEarned;
+
+    @Transient
+    private int currentStreak;
 }

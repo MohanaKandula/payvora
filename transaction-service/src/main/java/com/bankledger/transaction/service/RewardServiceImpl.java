@@ -42,6 +42,9 @@ public class RewardServiceImpl implements RewardService {
     private NotificationService notificationService;
 
     @Autowired
+    private com.bankledger.transaction.repository.NotificationRepository notificationRepository;
+
+    @Autowired
     private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
     @Autowired
@@ -57,7 +60,15 @@ public class RewardServiceImpl implements RewardService {
     private static final UUID CASHBACK_WALLET_ID = UUID.fromString("e1b07221-50e5-4d76-bc34-31f41e57c605");
 
     private BigDecimal getCashbackWalletBalance() {
-        return ledgerClient.getWalletBalance(CASHBACK_WALLET_ID);
+        try {
+            BigDecimal bal = ledgerClient.getWalletBalance(CASHBACK_WALLET_ID);
+            if (bal != null && bal.compareTo(BigDecimal.ZERO) > 0) {
+                return bal;
+            }
+        } catch (Exception e) {
+            log.warn("Ledger cashback wallet lookup failed, using fallback rewards budget pool", e);
+        }
+        return BigDecimal.valueOf(500.00);
     }
 
     private void writeAuditLog(String actionType, UUID referenceId, BigDecimal balance, String status, String reason) {
@@ -88,10 +99,44 @@ public class RewardServiceImpl implements RewardService {
         }
     }
 
+    private void populateStreakInfo(RewardWallet wallet) {
+        if (wallet == null || wallet.getUserId() == null) return;
+        List<DailyCheckin> checkins = dailyCheckinRepository.findByUserIdOrderByCheckinDateDesc(wallet.getUserId());
+        if (checkins == null || checkins.isEmpty()) {
+            wallet.setCheckinStreak(0);
+            wallet.setClaimedToday(false);
+            return;
+        }
+
+        Set<LocalDate> uniqueDates = new HashSet<>();
+        for (DailyCheckin c : checkins) {
+            if (c.getCheckinDate() != null) {
+                uniqueDates.add(c.getCheckinDate());
+            }
+        }
+
+        LocalDate today = LocalDate.now();
+        boolean claimedToday = uniqueDates.contains(today);
+        wallet.setClaimedToday(claimedToday);
+
+        LocalDate curr = claimedToday ? today : today.minusDays(1);
+        int streakCount = 0;
+
+        while (uniqueDates.contains(curr)) {
+            streakCount++;
+            curr = curr.minusDays(1);
+        }
+
+        wallet.setCheckinStreak(streakCount);
+
+        boolean spunToday = wallet.getLastSpinDate() != null && wallet.getLastSpinDate().equals(today);
+        wallet.setSpunToday(spunToday);
+    }
+
     @Override
     @Transactional
     public RewardWallet getOrCreateWallet(UUID userId) {
-        return walletRepository.findById(userId)
+        RewardWallet wallet = walletRepository.findById(userId)
                 .orElseGet(() -> {
                     RewardWallet newWallet = RewardWallet.builder()
                             .userId(userId)
@@ -104,6 +149,8 @@ public class RewardServiceImpl implements RewardService {
                             .build();
                     return walletRepository.save(newWallet);
                 });
+        populateStreakInfo(wallet);
+        return wallet;
     }
 
     @Override
@@ -135,14 +182,36 @@ public class RewardServiceImpl implements RewardService {
             throw new IllegalArgumentException("You have already checked in today!");
         }
 
-        // Earn 10 points + $0.50 daily cashback rewards
-        int pointsEarned = 10;
-        double dailyReward = 0.50;
+        // Calculate new streak count
+        List<DailyCheckin> checkins = dailyCheckinRepository.findByUserIdOrderByCheckinDateDesc(userId);
+        int currentStreak = 0;
+        if (checkins != null && !checkins.isEmpty()) {
+            LocalDate lastDate = checkins.get(0).getCheckinDate();
+            if (lastDate.equals(today.minusDays(1))) {
+                LocalDate curr = lastDate;
+                for (DailyCheckin c : checkins) {
+                    if (c.getCheckinDate().equals(curr)) {
+                        currentStreak++;
+                        curr = curr.minusDays(1);
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+        int newStreak = currentStreak + 1;
 
-        BigDecimal cashbackBal = getCashbackWalletBalance();
-        if (cashbackBal.compareTo(BigDecimal.valueOf(dailyReward)) < 0) {
-            writeAuditLog("DAILY_CHECKIN_FAILED", userId, cashbackBal, "FAILED", "Rewards budget exhausted. Cashback Wallet has insufficient funds.");
-            throw new IllegalArgumentException("Rewards budget exhausted. Cashback Wallet has insufficient funds.");
+        // Cashback is ONLY offered on milestone streak days: Day 10, Day 25, Day 45
+        boolean isMilestone = (newStreak == 10 || newStreak == 25 || newStreak == 45);
+        double dailyReward = isMilestone ? 0.50 : 0.0;
+        int pointsEarned = 10;
+
+        if (dailyReward > 0) {
+            BigDecimal cashbackBal = getCashbackWalletBalance();
+            if (cashbackBal.compareTo(BigDecimal.valueOf(dailyReward)) < 0) {
+                writeAuditLog("DAILY_CHECKIN_FAILED", userId, cashbackBal, "FAILED", "Rewards budget exhausted. Cashback Wallet has insufficient funds.");
+                throw new IllegalArgumentException("Rewards budget exhausted. Cashback Wallet has insufficient funds.");
+            }
         }
 
         DailyCheckin checkin = DailyCheckin.builder()
@@ -156,23 +225,30 @@ public class RewardServiceImpl implements RewardService {
 
         RewardWallet wallet = getOrCreateWallet(userId);
         wallet.setLoyaltyPoints(wallet.getLoyaltyPoints() + pointsEarned);
-        wallet.setCashbackBalance(wallet.getCashbackBalance() + dailyReward);
-        wallet.setTotalCashbackEarned(wallet.getTotalCashbackEarned() + dailyReward);
+        if (dailyReward > 0) {
+            wallet.setCashbackBalance(wallet.getCashbackBalance() + dailyReward);
+            wallet.setTotalCashbackEarned(wallet.getTotalCashbackEarned() + dailyReward);
+        }
         wallet.setUpdatedAt(LocalDateTime.now());
         
         updateLoyaltyLevel(wallet);
         walletRepository.save(wallet);
 
-        // Save daily reward transaction log
-        CashbackTransaction rewardTx = CashbackTransaction.builder()
-                .id(UUID.randomUUID())
-                .userId(userId)
-                .cashbackAmount(dailyReward)
-                .status("CREDITED")
-                .creditedAt(LocalDateTime.now())
-                .expiresAt(LocalDateTime.now().plusYears(1))
-                .build();
-        cashbackTransactionRepository.save(rewardTx);
+        if (dailyReward > 0) {
+            // Save daily reward transaction log
+            CashbackTransaction rewardTx = CashbackTransaction.builder()
+                    .id(UUID.randomUUID())
+                    .userId(userId)
+                    .cashbackAmount(dailyReward)
+                    .status("CREDITED")
+                    .creditedAt(LocalDateTime.now())
+                    .expiresAt(LocalDateTime.now().plusYears(1))
+                    .build();
+            cashbackTransactionRepository.save(rewardTx);
+        }
+
+        checkin.setCashbackEarned(dailyReward);
+        checkin.setCurrentStreak(newStreak);
 
         return checkin;
     }
@@ -186,53 +262,66 @@ public class RewardServiceImpl implements RewardService {
         List<CashbackOffer> activeOffers = offerRepository.findByActiveTrue();
         RewardWallet wallet = getOrCreateWallet(userId);
         
-        for (CashbackOffer offer : activeOffers) {
-            // 1. Transaction Type filter check
-            boolean matchesType = offer.getTransactionType().equalsIgnoreCase(transactionType);
-            
-            // Special fallback matching for utility payments & recharges:
-            // Mobile Recharge in system is a TRANSFER with RECHARGE category, but offer is configured as WITHDRAWAL.
-            // Bill Payment in system is a TRANSFER with BILL category, but offer is configured as WITHDRAWAL.
-            if (!matchesType) {
-                String categoryUpper = (category != null) ? category.toUpperCase() : "";
-                if (offer.getTitle().equalsIgnoreCase("Recharge Offer") && categoryUpper.startsWith("RECHARGE")) {
-                    matchesType = true;
-                } else if (offer.getTitle().equalsIgnoreCase("Bill Payment Offer") && (categoryUpper.startsWith("BILL") || categoryUpper.startsWith("UTILITY"))) {
-                    matchesType = true;
-                }
-            }
+        String categoryUpper = (category != null) ? category.toUpperCase() : "";
+        boolean isRechargeTx = categoryUpper.contains("RECHARGE");
+        boolean isBillTx = categoryUpper.contains("BILL") || categoryUpper.contains("UTIL");
+        boolean isGroceryTx = categoryUpper.contains("GROCERY") || categoryUpper.contains("GROCERIES");
+        boolean isEntertainmentTx = categoryUpper.contains("ENTERTAINMENT") || categoryUpper.contains("LEISURE");
+        boolean isRentTx = categoryUpper.contains("RENT") || categoryUpper.contains("HOUSING");
 
-            if (!matchesType) {
-                continue;
+        for (CashbackOffer offer : activeOffers) {
+            String titleLower = (offer.getTitle() != null) ? offer.getTitle().toLowerCase() : "";
+            String descLower = (offer.getDescription() != null) ? offer.getDescription().toLowerCase() : "";
+
+            boolean isRechargeOffer = titleLower.contains("recharge") || "RECHARGE".equalsIgnoreCase(offer.getTransactionType());
+            boolean isBillOffer = titleLower.contains("bill") || titleLower.contains("utility") || "UTILITY".equalsIgnoreCase(offer.getTransactionType());
+            boolean isGroceryOffer = titleLower.contains("grocery") || descLower.contains("grocery");
+            boolean isEntertainmentOffer = titleLower.contains("entertainment") || descLower.contains("entertainment") || titleLower.contains("cinema");
+            boolean isRentOffer = titleLower.contains("rent") || descLower.contains("rent") || titleLower.contains("housing");
+
+            // Strict category filtering: Each specialized offer type ONLY matches its respective transaction category
+            if (isRechargeOffer) {
+                if (!isRechargeTx) continue;
+            } else if (isBillOffer) {
+                if (!isBillTx) continue;
+            } else if (isGroceryOffer) {
+                if (!isGroceryTx) continue;
+            } else if (isEntertainmentOffer) {
+                if (!isEntertainmentTx) continue;
+            } else if (isRentOffer) {
+                if (!isRentTx) continue;
+            } else {
+                if (!offer.getTransactionType().equalsIgnoreCase(transactionType)) continue;
             }
 
             // 2. Minimum amount check
             if (amount < offer.getMinAmount()) {
+                log.info("Transaction amount {} is less than minimum requirement {} for offer {}. Skipping.", amount, offer.getMinAmount(), offer.getTitle());
                 continue;
             }
 
-            // 3. Prevent duplicate claims for "First Transaction Reward"
-            if (offer.getId().toString().equals("11111111-1111-1111-1111-111111111111")) {
-                List<CashbackTransaction> history = cashbackTransactionRepository.findByUserIdOrderByCreditedAtDesc(userId);
-                boolean claimedFirst = history.stream().anyMatch(t -> offer.getId().equals(t.getOfferId()));
-                if (claimedFirst) {
-                    continue;
-                }
+            // 3. Prevent duplicate claims: Each promotional cashback offer can be claimed ONLY ONCE per user
+            List<CashbackTransaction> history = cashbackTransactionRepository.findByUserIdOrderByCreditedAtDesc(userId);
+            boolean alreadyClaimed = history.stream().anyMatch(t -> offer.getId() != null && offer.getId().equals(t.getOfferId()));
+            if (alreadyClaimed) {
+                log.info("User {} has already claimed cashback offer {}. Skipping.", userId, offer.getTitle());
+                continue;
             }
 
-            // 4. Calculate Cashback
+            // 4. Calculate Cashback (Percentage calculation formula: amount * (percentage / 100.0), capped by maxCashback)
             double reward = 0.0;
-            if (offer.getFixedCashback() > 0) {
-                reward = offer.getFixedCashback();
-            } else if (offer.getCashbackPercentage() > 0) {
+            if (offer.getCashbackPercentage() > 0.0) {
                 reward = amount * (offer.getCashbackPercentage() / 100.0);
+            } else if (offer.getFixedCashback() > 0.0) {
+                reward = offer.getFixedCashback();
             }
 
-            if (offer.getMaxCashback() > 0 && reward > offer.getMaxCashback()) {
+            if (offer.getMaxCashback() > 0.0 && reward > offer.getMaxCashback()) {
                 reward = offer.getMaxCashback();
             }
 
             if (reward <= 0.0) {
+                log.info("Calculated reward is $0.00 for offer {}. Skipping.", offer.getTitle());
                 continue;
             }
 
@@ -244,15 +333,8 @@ public class RewardServiceImpl implements RewardService {
             }
 
             // 5. Crediting reward values
-            wallet.setCashbackBalance(wallet.getCashbackBalance() + reward);
             wallet.setTotalCashbackEarned(wallet.getTotalCashbackEarned() + reward);
-            
-            // Add loyalty points based on transaction size
-            int pointsToAdd = 10 + (int) (amount * 0.1);
-            wallet.setLoyaltyPoints(wallet.getLoyaltyPoints() + pointsToAdd);
             wallet.setUpdatedAt(LocalDateTime.now());
-            
-            updateLoyaltyLevel(wallet);
             walletRepository.save(wallet);
 
             CashbackTransaction cbTx = CashbackTransaction.builder()
@@ -267,11 +349,55 @@ public class RewardServiceImpl implements RewardService {
                     .build();
             cashbackTransactionRepository.save(cbTx);
             
-            log.info("Successfully credited ${} cashback to user {}", reward, userId);
+            log.info("Successfully credited ${} cashback earned to user {}", reward, userId);
+
+            // Auto-deposit cashback directly into user's primary spendable bank account balance
+            boolean autoRedeemed = false;
+            try {
+                autoRedeemed = autoDepositCashback(userId, reward, wallet);
+                if (autoRedeemed) {
+                    log.info("Auto-deposited ${} cashback directly to primary bank account balance for user {}", reward, userId);
+                    notificationService.createNotification(
+                            userId,
+                            "Cashback Deposited! 💵",
+                            "Congratulations! $" + String.format("%.2f", reward) + " cashback earned from your transaction has been deposited directly into your primary bank account balance."
+                    );
+                }
+            } catch (Exception ex) {
+                log.error("Failed to auto-deposit cashback to primary bank account for user " + userId, ex);
+            }
+
+            if (!autoRedeemed) {
+                wallet.setCashbackBalance(wallet.getCashbackBalance() + reward);
+                walletRepository.save(wallet);
+            }
             
             // Trigger only once per transaction for first matching offer
             break;
         }
+    }
+
+    private boolean autoDepositCashback(UUID userId, double amount, RewardWallet wallet) {
+        BigDecimal cashbackBal = getCashbackWalletBalance();
+        if (cashbackBal.compareTo(BigDecimal.valueOf(amount)) < 0) {
+            return false;
+        }
+
+        TransactionRequest transferReq = new TransactionRequest();
+        transferReq.setSourceAccountId(UUID.fromString("e1b07221-50e5-4d76-bc34-31f41e57c605")); // Cashback System Wallet
+        transferReq.setTargetAccountId(userId);
+        transferReq.setAmount(BigDecimal.valueOf(amount));
+        transferReq.setCurrency("USD");
+        transferReq.setIdempotencyKey("AUTOCB_" + UUID.randomUUID().toString());
+        transferReq.setCategory("CASHBACK");
+
+        TransactionResponse response = transactionService.transfer(transferReq);
+        if ("SUCCESS".equals(response.getStatus()) || "COMPLETED".equals(response.getStatus())) {
+            wallet.setCashbackUsed(wallet.getCashbackUsed() + amount);
+            walletRepository.save(wallet);
+            return true;
+        }
+        return false;
     }
 
     @Override
@@ -378,9 +504,13 @@ public class RewardServiceImpl implements RewardService {
                 .mapToDouble(CashbackTransaction::getCashbackAmount)
                 .sum();
 
-        double totalRedeemed = allTx.stream()
-                .filter(t -> t.getCashbackAmount() < 0)
-                .mapToDouble(t -> Math.abs(t.getCashbackAmount()))
+        List<RewardWallet> allWallets = walletRepository.findAll();
+        double totalRedeemed = allWallets.stream()
+                .mapToDouble(RewardWallet::getCashbackUsed)
+                .sum();
+
+        double totalUnredeemedBalance = allWallets.stream()
+                .mapToDouble(RewardWallet::getCashbackBalance)
                 .sum();
 
         double rewardsBudget = 500.0;
@@ -388,6 +518,7 @@ public class RewardServiceImpl implements RewardService {
 
         stats.put("totalDisbursed", totalDisbursed);
         stats.put("totalRedeemed", totalRedeemed);
+        stats.put("totalUnredeemedBalance", totalUnredeemedBalance);
         stats.put("rewardsBudget", rewardsBudget);
         stats.put("remainingBudget", remainingBudget);
         stats.put("offersCount", offerRepository.count());
@@ -493,6 +624,17 @@ public class RewardServiceImpl implements RewardService {
 
     private Map<String, Object> playCampaignGame(UUID userId, String gameKey) {
         checkTreasuryHealth();
+
+        RewardWallet wallet = getOrCreateWallet(userId);
+        LocalDate today = LocalDate.now();
+
+        if ("spin_wheel".equals(gameKey)) {
+            if (wallet.getLastSpinDate() != null && wallet.getLastSpinDate().equals(today)) {
+                throw new IllegalArgumentException("Daily spin limit reached! You can spin the wheel ONLY ONCE (1/1) per day. Please try again tomorrow.");
+            }
+            wallet.setLastSpinDate(today);
+        }
+
         RewardConfig config = rewardConfigRepository.findById(gameKey)
                 .orElseThrow(() -> new IllegalArgumentException("Game config not found: " + gameKey));
         
@@ -523,7 +665,7 @@ public class RewardServiceImpl implements RewardService {
             int points = ((Number) winningPrize.getOrDefault("points", 0)).intValue();
             double cashback = ((Number) winningPrize.getOrDefault("cashback", 0.0)).doubleValue();
 
-            RewardWallet wallet = getOrCreateWallet(userId);
+            wallet = getOrCreateWallet(userId);
             int cost = "spin_wheel".equals(gameKey) ? 50 : 30;
             if (wallet.getLoyaltyPoints() < cost) {
                 throw new IllegalArgumentException("Insufficient loyalty points! You need at least " + cost + " points to play.");

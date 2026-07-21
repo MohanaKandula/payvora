@@ -16,6 +16,8 @@ interface RewardWallet {
   loyaltyLevel: 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM';
   updatedAt: string;
   checkinStreak: number;
+  claimedToday?: boolean;
+  spunToday?: boolean;
 }
 
 interface CashbackOffer {
@@ -45,7 +47,7 @@ interface CashbackTransaction {
 
 export const Rewards: React.FC = () => {
   const queryClient = useQueryClient();
-  const [accountId, setAccountId] = useState<string>('');
+  const [accountId, setAccountId] = useState<string>(() => localStorage.getItem('accountId') || '');
   const [userRole, setUserRole] = useState<string>('');
   
   // Tab control: 'USER' | 'ADMIN'
@@ -56,16 +58,7 @@ export const Rewards: React.FC = () => {
   const [redeemError, setRedeemError] = useState('');
   const [redeemSuccess, setRedeemSuccess] = useState('');
 
-  // Daily check-in streak status
-  const [checkinSuccess, setCheckinSuccess] = useState('');
-  const [checkinError, setCheckinError] = useState('');
 
-  // Scratch card and spin wheel states
-  const [scratchCardScratched, setScratchCardScratched] = useState(false);
-  const [scratchReward, setScratchReward] = useState('');
-  const [isSpinning, setIsSpinning] = useState(false);
-  const [spinResult, setSpinResult] = useState('');
-  const [wheelDegree, setWheelDegree] = useState(0);
 
   // Admin offer creator states
   const [offerTitle, setOfferTitle] = useState('');
@@ -137,14 +130,13 @@ export const Rewards: React.FC = () => {
     },
   });
 
-  // 3. Fetch All Cashback Offers (for admin)
+  // 3. Fetch All Cashback Offers (for title resolution & history)
   const { data: allOffers = [], refetch: refetchAllOffers } = useQuery<CashbackOffer[]>({
     queryKey: ['rewards-admin-offers'],
     queryFn: async () => {
       const response = await axiosInstance.get('/api/rewards/admin/offers');
       return response.data;
     },
-    enabled: userRole === 'ADMIN',
   });
 
   // 4. Fetch User Cashback History
@@ -167,125 +159,9 @@ export const Rewards: React.FC = () => {
     enabled: userRole === 'ADMIN',
   });
 
-  // Fetch Spin Wheel Config
-  const { data: spinWheelConfig } = useQuery({
-    queryKey: ['spin-wheel-config'],
-    queryFn: async () => {
-      const response = await axiosInstance.get('/api/rewards/config/spin_wheel');
-      return typeof response.data.configValue === 'string' ? JSON.parse(response.data.configValue) : response.data;
-    }
-  });
 
-  // Fetch Scratch Card Config
-  const { data: scratchCardConfig } = useQuery({
-    queryKey: ['scratch-card-config'],
-    queryFn: async () => {
-      const response = await axiosInstance.get('/api/rewards/config/scratch_card');
-      return typeof response.data.configValue === 'string' ? JSON.parse(response.data.configValue) : response.data;
-    }
-  });
 
-  // Wheel Prizes helper
-  const wheelPrizes = spinWheelConfig?.prizes || [
-    { name: '+50 Points' },
-    { name: 'Try Again' },
-    { name: '+100 Points' },
-    { name: '+$0.10' },
-    { name: '200 Points' },
-    { name: '10 Points' }
-  ];
 
-  // Play Spin Wheel Mutation
-  const playSpinWheelMutation = useMutation({
-    mutationFn: async () => {
-      const response = await axiosInstance.post(`/api/rewards/play/spin-wheel?userId=${accountId}`);
-      return response.data;
-    },
-    onSuccess: (data) => {
-      const wonPrize = data.prize;
-      const prizeIdx = wheelPrizes.findIndex((p: any) => p.name === wonPrize.name);
-      const idx = prizeIdx >= 0 ? prizeIdx : 0;
-
-      const slicesCount = wheelPrizes.length;
-      const sliceAngleDeg = 360 / slicesCount;
-      const stopDeg = 360 - (idx * sliceAngleDeg) - (sliceAngleDeg / 2);
-      const targetDeg = stopDeg + 1440; // 4 extra spins
-      setWheelDegree(targetDeg);
-
-      setTimeout(() => {
-        setIsSpinning(false);
-        setSpinResult(wonPrize.name);
-        refetchWallet();
-        refetchHistory();
-      }, 4000);
-    },
-    onError: (err: any) => {
-      setIsSpinning(false);
-      const errMsg = err.response?.data?.message || err.response?.data?.error || err.message || 'Gameplay failed. Please check your points balance.';
-      alert(errMsg);
-    }
-  });
-
-  // Canvas lucky wheel sectors renderer
-  useEffect(() => {
-    const canvas = document.getElementById('wheelCanvas') as HTMLCanvasElement;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const size = canvas.width;
-    const center = size / 2;
-    const radius = center - 2;
-    const slicesCount = wheelPrizes.length;
-    const sliceAngle = (2 * Math.PI) / slicesCount;
-
-    ctx.clearRect(0, 0, size, size);
-
-    wheelPrizes.forEach((prize: any, i: number) => {
-      const startAngle = i * sliceAngle - Math.PI / 2;
-      const endAngle = startAngle + sliceAngle;
-
-      ctx.beginPath();
-      ctx.moveTo(center, center);
-      ctx.arc(center, center, radius, startAngle, endAngle);
-      ctx.closePath();
-
-      const colors = ['#7c3aed', '#f43f5e', '#10b981', '#3b82f6', '#d946ef', '#eab308', '#ec4899', '#f97316'];
-      ctx.fillStyle = prize.color || colors[i % colors.length];
-      ctx.fill();
-      ctx.lineWidth = 1;
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-      ctx.stroke();
-
-      // Text Label Translation
-      ctx.save();
-      ctx.translate(center, center);
-      ctx.rotate(startAngle + sliceAngle / 2);
-      ctx.textAlign = 'right';
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 8px sans-serif';
-      ctx.fillText(prize.name, radius - 10, 3);
-      ctx.restore();
-    });
-  }, [wheelPrizes]);
-
-  // Play Scratch Card Mutation
-  const playScratchCardMutation = useMutation({
-    mutationFn: async () => {
-      const response = await axiosInstance.post(`/api/rewards/play/scratch-card?userId=${accountId}`);
-      return response.data;
-    },
-    onSuccess: (data) => {
-      setScratchReward(data.prize.name);
-      setScratchCardScratched(true);
-      refetchWallet();
-      refetchHistory();
-    },
-    onError: (err: any) => {
-      const errMsg = err.response?.data?.message || err.response?.data?.error || err.message || 'Gameplay failed. Please check your points balance.';
-      alert(errMsg);
-    }
-  });
 
   // 6. Redeem Cashback Mutation
   const redeemMutation = useMutation({
@@ -307,23 +183,7 @@ export const Rewards: React.FC = () => {
     }
   });
 
-  // 7. Daily Check-in Mutation
-  const checkinMutation = useMutation({
-    mutationFn: async () => {
-      const response = await axiosInstance.post(`/api/rewards/checkin?userId=${accountId}`);
-      return response.data;
-    },
-    onSuccess: () => {
-      setCheckinSuccess('🎉 Streak Claimed! Earned +10 Points & $0.50 Cashback!');
-      refetchWallet();
-      refetchHistory();
-      setTimeout(() => setCheckinSuccess(''), 4000);
-    },
-    onError: (err: any) => {
-      setCheckinError(err.response?.data?.message || 'Already claimed today!');
-      setTimeout(() => setCheckinError(''), 4000);
-    }
-  });
+
 
   // 8. Create Offer Mutation (Admin)
   const createOfferMutation = useMutation({
@@ -369,21 +229,7 @@ export const Rewards: React.FC = () => {
     redeemMutation.mutate(amt);
   };
 
-  const handleDailyCheckin = () => {
-    checkinMutation.mutate();
-  };
 
-  const handleScratch = () => {
-    if (scratchCardScratched) return;
-    playScratchCardMutation.mutate();
-  };
-
-  const handleSpinWheel = () => {
-    if (isSpinning) return;
-    setIsSpinning(true);
-    setSpinResult('');
-    playSpinWheelMutation.mutate();
-  };
 
   const handleAdminOfferSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -434,19 +280,13 @@ export const Rewards: React.FC = () => {
   const tier = wallet ? getTierDetails(wallet.loyaltyLevel) : null;
 
   if (false as any) {
-    console.log(Calendar, AlertCircle, Play, Zap, UserPlus, Lock, X, activeTab, setActiveTab, setOfferType, setMinAmt, setCbPercent, setFixedCb, setMaxCb, adminOfferSuccess, refetchReferredUsers, allOffers, analytics, scratchCardConfig, toggleOfferMutation, handleAdminOfferSubmit);
+    console.log(Calendar, AlertCircle, Play, Zap, UserPlus, Lock, X, activeTab, setActiveTab, setOfferType, setMinAmt, setCbPercent, setFixedCb, setMaxCb, adminOfferSuccess, refetchReferredUsers, allOffers, analytics, toggleOfferMutation, handleAdminOfferSubmit);
   }
 
   return (
     <div className="space-y-8 animate-fade-in pb-16">
       
-      {/* Toast Alert overlay */}
-      {checkinSuccess && (
-        <div className="fixed bottom-6 right-6 z-50 p-4 rounded-2xl bg-emerald-950 border border-emerald-500/30 text-emerald-300 text-xs font-black shadow-2xl flex items-center gap-2.5 animate-bounce">
-          <CheckCircle2 className="h-5 w-5 text-emerald-400" />
-          <span>{checkinSuccess}</span>
-        </div>
-      )}
+
 
       {/* Rewards Page Banner */}
       <div className="relative rounded-3xl overflow-hidden border border-white/10 bg-gradient-to-r from-violet-950/60 via-indigo-950/60 to-fuchsia-950/60 p-6 md:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-xl glow-purple">
@@ -467,26 +307,14 @@ export const Rewards: React.FC = () => {
               Cashback & Rewards
             </h2>
             <p className="text-sm text-gray-300 max-w-lg leading-relaxed">
-              Earn real-time cash credits on ledger transactions, claim daily login streaks, spin for reward multipliers, and level up your loyalty tier!
+              Earn real-time cash credits on ledger transactions, claim cashback on recharges and transfers, and manage your rewards!
             </p>
           </div>
         </div>
-
-        {/* Loyalty Tier status badge */}
-        {wallet && tier && (
-          <div className={`glass-panel px-6 py-5 rounded-3xl border bg-gradient-to-tr ${tier.gradient} text-center min-w-[220px] z-10 shrink-0 self-center md:self-auto shadow-2xl`}>
-            <span className="text-[10px] font-black uppercase tracking-widest opacity-80">Account Loyalty level</span>
-            <p className="font-display text-2xl font-black tracking-wider uppercase mt-1 flex items-center justify-center gap-1.5">
-              <Award className="h-6 w-6 text-current" />
-              {wallet.loyaltyLevel}
-            </p>
-            <p className="text-[10px] font-medium opacity-90 mt-1 max-w-[190px] mx-auto leading-normal">{tier.text}</p>
-          </div>
-        )}
       </div>
 
-      {/* Stats Analytics Dashboard Row with extremely clear typography and spacing */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* Stats Analytics Dashboard Row */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="glass-panel p-6 rounded-3xl border border-white/10 flex flex-col justify-between relative overflow-hidden bg-[#0c0c14]/90 glow-purple">
           <div className="absolute right-4 top-4 w-9 h-9 rounded-xl bg-violet-600/10 border border-violet-500/20 flex items-center justify-center text-violet-400">
             <Coins className="h-5 w-5" />
@@ -508,16 +336,6 @@ export const Rewards: React.FC = () => {
         </div>
 
         <div className="glass-panel p-6 rounded-3xl border border-white/10 flex flex-col justify-between relative overflow-hidden bg-[#0c0c14]/90">
-          <div className="absolute right-4 top-4 w-9 h-9 rounded-xl bg-pink-600/10 border border-pink-500/20 flex items-center justify-center text-pink-400">
-            <Sparkles className="h-5 w-5" />
-          </div>
-          <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Loyalty Points</span>
-          <p className="font-display font-black text-3xl text-white mt-3 font-mono">
-            {wallet?.loyaltyPoints.toLocaleString() || '0'}
-          </p>
-        </div>
-
-        <div className="glass-panel p-6 rounded-3xl border border-white/10 flex flex-col justify-between relative overflow-hidden bg-[#0c0c14]/90">
           <div className="absolute right-4 top-4 w-9 h-9 rounded-xl bg-blue-600/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
             <TrendingUp className="h-5 w-5" />
           </div>
@@ -533,49 +351,7 @@ export const Rewards: React.FC = () => {
         {/* Left Column: Streaks and Daily check-ins */}
         <div className="lg:col-span-2 space-y-8">
           
-          {/* Daily Check-in Streak panel */}
-          <div className="glass-panel p-6 rounded-3xl border border-white/10 bg-[#0c0c14]/90 space-y-5">
-            <div className="flex items-center justify-between gap-4">
-              <div className="space-y-1">
-                <span className="text-[10px] text-violet-400 uppercase tracking-widest font-black block">Streaks Program</span>
-                <h3 className="font-display font-black text-lg text-white">Daily Check-In</h3>
-              </div>
-              <button
-                onClick={handleDailyCheckin}
-                disabled={checkinMutation.isPending}
-                className="px-5 py-2.5 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition-all active:scale-95 disabled:opacity-50"
-              >
-                {checkinMutation.isPending ? 'Processing...' : 'Claim Today'}
-              </button>
-            </div>
 
-            {checkinError && (
-              <div className="p-3.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-350 text-xs font-semibold">
-                {checkinError}
-              </div>
-            )}
-
-            {/* Streak grid */}
-            <div className="grid grid-cols-7 gap-3.5 pt-2">
-              {[...Array(7)].map((_, idx) => {
-                const dayNum = idx + 1;
-                const isClaimed = wallet ? wallet.checkinStreak >= dayNum : false;
-                return (
-                  <div 
-                    key={idx} 
-                    className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all ${
-                      isClaimed 
-                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' 
-                        : 'bg-white/[0.01] border-white/5 text-gray-500'
-                    }`}
-                  >
-                    <span className="text-[9px] font-black uppercase tracking-wider font-mono mb-2">Day {dayNum}</span>
-                    {isClaimed ? <Check className="h-4.5 w-4.5" /> : `+10`}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
 
           {/* Active Cashback Campaigns */}
           <div className="glass-panel p-6 rounded-3xl border border-white/10 bg-[#0c0c14]/90 space-y-5">
@@ -587,10 +363,15 @@ export const Rewards: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {(() => {
                 const visibleOffers = activeOffers.filter(offer => {
-                  if (offer.id === '11111111-1111-1111-1111-111111111111') {
-                    return !cbHistory.some(tx => tx.offerId === offer.id);
+                  const offerIdLower = String(offer.id).toLowerCase();
+                  const alreadyClaimed = cbHistory.some(tx => {
+                    if (!tx.offerId) return false;
+                    return String(tx.offerId).toLowerCase() === offerIdLower;
+                  });
+                  if (alreadyClaimed) {
+                    return false;
                   }
-                  if (offer.id === '77777777-7777-7777-7777-777777777777') {
+                  if (offerIdLower === '77777777-7777-7777-7777-777777777777') {
                     return false;
                   }
                   return true;
@@ -661,53 +442,7 @@ export const Rewards: React.FC = () => {
 
           </div>
 
-          {/* History list */}
-          <div className="glass-panel p-6 rounded-3xl border border-white/10 bg-[#0c0c14]/90 space-y-5">
-            <h3 className="font-display font-black text-lg text-white">Cashback Logs</h3>
-            <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
-              {cbHistory.length > 0 ? (
-                cbHistory.map((item) => {
-                  const isCredit = item.cashbackAmount > 0;
-                  const getOfferTitle = (offerId: string | null) => {
-                    if (!offerId) return 'Manual Reward / Game Win';
-                    if (offerId === '77777777-7777-7777-7777-777777777777') return 'Referral Signup Reward';
-                    if (offerId === '11111111-1111-1111-1111-111111111111') return 'First Transaction Reward';
-                    const found = activeOffers.find(o => o.id === offerId) || allOffers.find(o => o.id === offerId);
-                    return found ? found.title : 'Cashback Campaign';
-                  };
 
-                  return (
-                    <div key={item.id} className="p-4 rounded-2xl bg-white/[0.01] border border-white/5 flex items-center justify-between">
-                      <div className="space-y-1.5">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded ${
-                            isCredit ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-450 border border-rose-500/20'
-                          }`}>
-                            {isCredit ? 'Credit' : 'Redeemed'}
-                          </span>
-                          <span className="text-[10px] font-bold text-gray-300">
-                            {isCredit ? getOfferTitle(item.offerId) : 'Cashback Redeemed to Wallet'}
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-gray-400 font-mono">ID: {item.id.substring(0, 8)}...</p>
-                        <p className="text-[10px] text-gray-500 font-mono">
-                          {new Date(item.creditedAt).toLocaleString()}
-                        </p>
-                      </div>
-
-                      <span className={`text-base font-black font-mono ${isCredit ? 'text-emerald-400' : 'text-rose-450'}`}>
-                        {isCredit ? '+' : '-'}${Math.abs(item.cashbackAmount).toFixed(2)}
-                      </span>
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="text-center py-8 text-gray-500 text-xs">
-                  No reward transactions found in ledger logs.
-                </div>
-              )}
-            </div>
-          </div>
 
         </div>
 
@@ -757,69 +492,9 @@ export const Rewards: React.FC = () => {
             </form>
           </div>
 
-          {/* Interactive scratch card */}
-          <div className="glass-panel p-6 rounded-3xl border border-white/10 bg-[#0c0c14]/90 space-y-5">
-            <div className="space-y-1">
-              <span className="text-[10px] text-violet-400 uppercase tracking-widest font-black block">Play to Win</span>
-              <h3 className="font-display font-black text-lg text-white">Scratch & Earn</h3>
-            </div>
 
-            <div 
-              onClick={handleScratch}
-              className={`h-40 rounded-2xl border border-dashed border-white/10 flex flex-col items-center justify-center cursor-pointer transition-all relative overflow-hidden ${
-                scratchCardScratched ? 'bg-violet-950/20' : 'bg-gradient-to-tr from-violet-600/40 via-fuchsia-600/40 to-indigo-950/40 hover:scale-[1.01]'
-              }`}
-            >
-              {!scratchCardScratched ? (
-                <>
-                  <Sparkles className="h-8 w-8 text-white animate-pulse" />
-                  <span className="text-xs font-black text-white uppercase tracking-widest mt-2">Scratch Card</span>
-                  <span className="text-[9px] text-violet-300 font-bold uppercase mt-1">Tap to scratch overlay</span>
-                </>
-              ) : (
-                <div className="text-center animate-fade-in">
-                  <span className="text-[10px] text-violet-400 uppercase tracking-widest font-black block">You Won!</span>
-                  <p className="font-display font-black text-xl text-white mt-1">{scratchReward}</p>
-                </div>
-              )}
-            </div>
-          </div>
 
-          {/* Spin Wheel */}
-          <div className="glass-panel p-6 rounded-3xl border border-white/10 bg-[#0c0c14]/90 space-y-5 flex flex-col items-center">
-            <div className="space-y-1 text-left w-full">
-              <span className="text-[10px] text-violet-400 uppercase tracking-widest font-black block">Lucky Wheel</span>
-              <h3 className="font-display font-black text-lg text-white">Spin the Wheel</h3>
-            </div>
 
-            <div className="relative w-44 h-44 flex items-center justify-center pt-2">
-              <div 
-                className="w-40 h-40 rounded-full border-4 border-white/10 relative flex items-center justify-center transition-all duration-4000 ease-out overflow-hidden shadow-2xl"
-                style={{ transform: `rotate(${wheelDegree}deg)` }}
-              >
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_transparent_40%,_rgba(0,0,0,0.4))] pointer-events-none z-10" />
-                <canvas id="wheelCanvas" width="160" height="160" className="rounded-full" />
-              </div>
-              
-              {/* Center Hub */}
-              <div className="absolute w-14 h-14 rounded-full bg-[#111118] border-2 border-white/20 flex items-center justify-center shadow-2xl z-10">
-                <button
-                  onClick={handleSpinWheel}
-                  disabled={isSpinning}
-                  className="w-11 h-11 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:scale-105 active:scale-95 transition-all text-white font-black text-[10px] flex items-center justify-center disabled:opacity-50"
-                >
-                  {isSpinning ? 'SPIN...' : 'SPIN'}
-                </button>
-              </div>
-            </div>
-
-            {spinResult && (
-              <div className="text-center animate-bounce">
-                <span className="text-[10px] text-violet-400 tracking-widest font-black block">Spin Outcome</span>
-                <p className="font-display font-black text-xl text-white">{spinResult}</p>
-              </div>
-            )}
-          </div>
 
         </div>
 

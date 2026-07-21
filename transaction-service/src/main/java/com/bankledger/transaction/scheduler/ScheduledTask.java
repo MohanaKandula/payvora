@@ -152,14 +152,12 @@ public class ScheduledTask {
                 if (balance != null && balance.getCurrentBalance() != null) {
                     BigDecimal currentBalance = balance.getCurrentBalance();
                     if (currentBalance.compareTo(BigDecimal.ZERO) > 0) {
-                        BigDecimal apyRate = BigDecimal.valueOf(4.50);
-                        try {
-                            InvestmentSettings settings = investmentSettingsRepository.findById("GLOBAL").orElse(null);
-                            if (settings != null && settings.getApyRate() != null) {
-                                apyRate = settings.getApyRate();
-                            }
-                        } catch (Exception e) {
-                            // ignore
+                        InvestmentSettings settings = investmentSettingsRepository.findById("GLOBAL")
+                                .orElseThrow(() -> new IllegalStateException("Treasury Configuration Missing: APY settings must be configured by Administrator in Treasury Settings."));
+                        BigDecimal apyRate = settings.getApyRate();
+                        if (apyRate == null || apyRate.compareTo(BigDecimal.ZERO) <= 0) {
+                            log.error("Cron: Configured APY rate is invalid: {}", apyRate);
+                            continue;
                         }
                         BigDecimal dailyRate = apyRate.divide(BigDecimal.valueOf(100), 10, RoundingMode.HALF_UP)
                                 .divide(new BigDecimal("365"), 10, RoundingMode.HALF_UP);

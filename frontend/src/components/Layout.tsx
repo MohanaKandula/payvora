@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
+import { FloatingHelpWidget } from './FloatingHelpWidget';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { axiosInstance } from '../api/axiosInstance';
-import { LayoutDashboard, Receipt, UserCheck, LogOut, Wallet, ShieldAlert, BarChart3, CreditCard, Calendar, ShieldCheck, User, PiggyBank, Bell, Lock, RefreshCw, Gift } from 'lucide-react';
-
+import { LayoutDashboard, Receipt, UserCheck, LogOut, Wallet, ShieldAlert, BarChart3, CreditCard, Calendar, ShieldCheck, User, PiggyBank, Bell, Lock, RefreshCw, Gift, HelpCircle, Bot } from 'lucide-react';
+ 
 interface LayoutProps {
   children: React.ReactNode;
 }
@@ -134,9 +135,11 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const menuItems = [];
 
   if (user?.isAdmin) {
-    // Admins get Admin Dashboard, Security, Profile, and Personal Statement
+    // Admins get Admin Dashboard, AI Operations Assistant, Support Desk, Personal Statement, Security, and Profile
     menuItems.push(
       { name: 'Admin Dashboard', path: '/admin', icon: UserCheck },
+      { name: 'AI Operations Assistant 🤖', path: '/admin?tab=ai-copilot', icon: Bot },
+      { name: 'Support Desk 🎧', path: '/admin?tab=support', icon: HelpCircle },
       { name: 'Personal Statement', path: '/statement', icon: Receipt },
       { name: 'Security', path: '/security', icon: ShieldCheck },
       { name: 'Profile', path: '/profile', icon: User }
@@ -151,6 +154,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       { name: 'Virtual Cards', path: '/cards', icon: CreditCard },
       { name: 'Scheduler', path: '/recurring', icon: Calendar },
       { name: 'Rewards', path: '/rewards', icon: Gift },
+      { name: 'Help & Support', path: '/help', icon: HelpCircle },
       { name: 'Security', path: '/security', icon: ShieldCheck },
       { name: 'Profile', path: '/profile', icon: User }
     );
@@ -280,8 +284,11 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
               const isLocked = !user?.isAdmin && (kycStatus !== 'APPROVED' || !pinSet || !mfaEnabled);
               return menuItems.map((item) => {
                 const Icon = item.icon;
-                const isActive = location.pathname === item.path;
-                const isItemLocked = isLocked && !['/profile', '/security'].includes(item.path);
+                const fullPath = location.pathname + location.search;
+                const isActive = item.path.includes('?')
+                  ? fullPath === item.path
+                  : (location.pathname === item.path && !location.search.includes('tab=support'));
+                const isItemLocked = isLocked && !['/profile', '/security', '/help'].includes(item.path);
 
                 if (isItemLocked) {
                   return (
@@ -330,7 +337,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         <main className="flex-1 p-6 md:p-8 overflow-y-auto max-w-7xl mx-auto w-full flex flex-col">
           {(() => {
             const isLocked = !user?.isAdmin && (kycStatus !== 'APPROVED' || !pinSet || !mfaEnabled);
-            const isLockedPath = !['/profile', '/security'].includes(location.pathname);
+            const isLockedPath = !['/profile', '/security', '/help'].includes(location.pathname);
             
             if (isLocked && isLockedPath) {
               return (
@@ -434,6 +441,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
           })()}
         </main>
       </div>
+
+      {/* Floating Help & Guidance Drawer */}
+      <FloatingHelpWidget />
     </div>
   );
 };

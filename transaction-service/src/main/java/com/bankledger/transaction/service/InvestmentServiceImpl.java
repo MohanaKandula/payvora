@@ -245,12 +245,19 @@ public class InvestmentServiceImpl implements InvestmentService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         InvestmentSettings settings = getSettings();
+        BigDecimal grossApy = settings.getGrossApyRate() != null ? settings.getGrossApyRate() : settings.getApyRate().add(BigDecimal.valueOf(1.00));
+        BigDecimal platformSpread = settings.getPlatformSpread() != null ? settings.getPlatformSpread() : grossApy.subtract(settings.getApyRate());
 
         Map<String, Object> stats = new HashMap<>();
         stats.put("totalAum", totalAum);
         stats.put("totalYieldDistributed", totalYieldDistributed);
         stats.put("accountsCount", accounts.size());
         stats.put("apyRate", settings.getApyRate());
+        stats.put("grossApyRate", grossApy);
+        stats.put("platformSpread", platformSpread);
+        stats.put("effectiveFrom", settings.getEffectiveFrom());
+        stats.put("updatedBy", settings.getUpdatedBy() != null ? settings.getUpdatedBy() : "ADMIN");
+        stats.put("updatedAt", settings.getUpdatedAt());
         stats.put("yieldEnginePaused", settings.isYieldEnginePaused());
         stats.put("recentReports", yieldAccrualRepository.findTop50ByOrderByAccrualDateDesc());
         
@@ -261,17 +268,48 @@ public class InvestmentServiceImpl implements InvestmentService {
     @Transactional
     public void updateApy(BigDecimal apyRate) {
         InvestmentSettings settings = getSettings();
+        BigDecimal oldApy = settings.getApyRate();
+        BigDecimal grossApy = apyRate.add(BigDecimal.valueOf(1.00));
+        BigDecimal spread = grossApy.subtract(apyRate);
+
         settings.setApyRate(apyRate);
+        settings.setGrossApyRate(grossApy);
+        settings.setPlatformSpread(spread);
+        settings.setEffectiveFrom(LocalDateTime.now());
+        settings.setUpdatedBy("ADMIN");
+        settings.setUpdatedAt(LocalDateTime.now());
         investmentSettingsRepository.save(settings);
         
-        // Update all active accounts to use the new APY
+        // Update all active accounts to use the new APY for future accruals
         List<InvestmentAccount> accounts = investmentAccountRepository.findAll();
         for (InvestmentAccount acc : accounts) {
             acc.setApyRate(apyRate);
             acc.setUpdatedAt(LocalDateTime.now());
         }
         investmentAccountRepository.saveAll(accounts);
-        log.info("[Investment Service] Successfully updated global APY to {}%", apyRate);
+
+        // Record immutable Treasury Audit Log for APY rate update
+        try {
+            com.bankledger.transaction.model.TreasuryAuditLog auditLog = com.bankledger.transaction.model.TreasuryAuditLog.builder()
+                    .id(UUID.randomUUID())
+                    .adminUser("ADMIN")
+                    .actionType("APY_UPDATE")
+                    .referenceId(UUID.nameUUIDFromBytes("GLOBAL_SETTINGS".getBytes()))
+                    .walletId(UUID.nameUUIDFromBytes("GLOBAL_SETTINGS".getBytes()))
+                    .beforeBalance(oldApy)
+                    .afterBalance(apyRate)
+                    .status("COMPLETED")
+                    .ipAddress("127.0.0.1")
+                    .deviceInfo("Treasury Governance Console")
+                    .reason("Administrator updated Treasury User APY from " + oldApy + "% to " + apyRate + "% (Gross APY: " + grossApy + "%, Spread: " + spread + "%)")
+                    .createdAt(LocalDateTime.now())
+                    .build();
+            treasuryAuditLogRepository.save(auditLog);
+        } catch (Exception e) {
+            log.error("Failed to write APY update audit log", e);
+        }
+
+        log.info("[Investment Service] Successfully updated global User APY from {}% to {}%", oldApy, apyRate);
     }
 
     @Override
@@ -279,6 +317,7 @@ public class InvestmentServiceImpl implements InvestmentService {
     public void togglePause(boolean paused) {
         InvestmentSettings settings = getSettings();
         settings.setYieldEnginePaused(paused);
+        settings.setUpdatedAt(LocalDateTime.now());
         investmentSettingsRepository.save(settings);
         log.info("[Investment Service] Successfully toggled Yield Engine pause state to: {}", paused);
     }
@@ -286,10 +325,18 @@ public class InvestmentServiceImpl implements InvestmentService {
     private InvestmentSettings getSettings() {
         return investmentSettingsRepository.findById("GLOBAL")
                 .orElseGet(() -> {
+                    BigDecimal defaultUserApy = BigDecimal.valueOf(4.50);
+                    BigDecimal defaultGrossApy = BigDecimal.valueOf(5.50);
+                    BigDecimal defaultSpread = BigDecimal.valueOf(1.00);
                     InvestmentSettings defaultSettings = InvestmentSettings.builder()
                             .id("GLOBAL")
-                            .apyRate(BigDecimal.valueOf(4.50))
+                            .apyRate(defaultUserApy)
+                            .grossApyRate(defaultGrossApy)
+                            .platformSpread(defaultSpread)
                             .yieldEnginePaused(false)
+                            .effectiveFrom(LocalDateTime.now())
+                            .updatedBy("SYSTEM_INIT")
+                            .updatedAt(LocalDateTime.now())
                             .build();
                     return investmentSettingsRepository.save(defaultSettings);
                 });

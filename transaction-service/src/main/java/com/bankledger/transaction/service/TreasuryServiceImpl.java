@@ -628,15 +628,9 @@ public class TreasuryServiceImpl implements TreasuryService {
         BigDecimal aum = getNeobankAum();
         List<StressTestResult> list = new ArrayList<>();
 
-        BigDecimal customApy = BigDecimal.valueOf(4.50);
-        try {
-            InvestmentSettings settings = investmentSettingsRepository.findById("GLOBAL").orElse(null);
-            if (settings != null && settings.getApyRate() != null) {
-                customApy = settings.getApyRate();
-            }
-        } catch (Exception e) {
-            // fallback
-        }
+        InvestmentSettings settings = investmentSettingsRepository.findById("GLOBAL")
+                .orElseThrow(() -> new IllegalStateException("Treasury Configuration Missing: APY settings must be configured by Administrator in Treasury Settings."));
+        BigDecimal customApy = settings.getApyRate();
         BigDecimal apyFactor = customApy.divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
 
         // Scenario 1: Low Yield Stress

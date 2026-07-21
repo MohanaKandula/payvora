@@ -7,4 +7,5 @@ import java.util.UUID;
 
 @Repository
 public interface CapitalInjectionRepository extends JpaRepository<CapitalInjection, UUID> {
+    long countByApprovedBy(String approvedBy);
 }

@@ -343,7 +343,7 @@ export const Investments: React.FC = () => {
   }, [treasuryAllocation]);
 
   // Derived variables
-  const currentApy = vaultAccount?.apyRate || 4.50;
+  const currentApy = vaultAccount?.apyRate || 0;
   const currentInvested = vaultAccount?.investedBalance || 0;
   
   // Dynamic safety indicators: Check if API error occurred.
