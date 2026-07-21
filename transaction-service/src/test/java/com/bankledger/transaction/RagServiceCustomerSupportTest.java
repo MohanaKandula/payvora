@@ -326,4 +326,14 @@ public class RagServiceCustomerSupportTest {
         assertTrue(res.getAnswer().contains("verification link will be sent"));
         assertTrue(res.getAnswer().contains("Profile -> Contact Information"));
     }
+
+    @Test
+    void test23_AdminDashboard_AiOperationsRouting() {
+        // Query that contains a customer support topic word ("interest") but runs with isAdmin = true
+        RagResponseDto res = ragService.queryRag("Why was today's interest distribution paused?", "admin-id", true);
+        assertNotNull(res);
+        assertEquals("ADMIN_OPERATIONAL_INVESTIGATOR", res.getCategory());
+        assertTrue(res.getAnswer().contains("Yield Engine State"));
+        assertTrue(res.getAnswer().contains("Live System & Account Data"));
+    }
 }

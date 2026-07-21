@@ -209,8 +209,8 @@ public class RagServiceImpl implements RagService {
                 lowerQuery.contains("enterprise operations") || lowerQuery.contains("reconciliation failing") ||
                 lowerQuery.contains("yield distribution") || lowerQuery.contains("system health summary");
 
-        // Explicit Route Decision: Only trigger Admin Operations Assistant for non-customer topics that deal with admin operations
-        if (!isCustomerSupportTopic && isAdminOperationalTopic) {
+        // Explicit Route Decision: Only trigger Admin Operations Assistant for admin/operational queries
+        if ((isAdmin && (isAdminOperationalTopic || isCustomerSupportTopic)) || (!isCustomerSupportTopic && isAdminOperationalTopic)) {
             if (!isAdmin) {
                 return new RagResponseDto(
                     userQuery,
