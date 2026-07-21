@@ -35,6 +35,10 @@ public class JwtValidationFilter extends AbstractGatewayFilterFactory<JwtValidat
         return (exchange, chain) -> {
             ServerHttpRequest request = exchange.getRequest();
 
+            if (request.getMethod() != null && "OPTIONS".equals(request.getMethod().name())) {
+                return chain.filter(exchange);
+            }
+
             if (!request.getHeaders().containsKey(HttpHeaders.AUTHORIZATION)) {
                 return onError(exchange, "No Authorization Header", HttpStatus.UNAUTHORIZED);
             }

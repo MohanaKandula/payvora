@@ -310,4 +310,20 @@ public class RagServiceCustomerSupportTest {
         assertNotNull(res.getGeneratedAt(), "GeneratedAt timestamp should be present");
         assertEquals("Wallet & Account Policy", res.getSourceDocument());
     }
+
+    @Test
+    void test21_SubIntentClassification_AccountDeactivation() {
+        RagResponseDto res = ragService.queryRag("I want to deactivate my account");
+        assertNotNull(res);
+        assertTrue(res.getAnswer().contains("Deactivate Account"));
+        assertTrue(res.getAnswer().contains("wallet balance is exactly $0.00"));
+    }
+
+    @Test
+    void test22_SubIntentClassification_ChangeEmail() {
+        RagResponseDto res = ragService.queryRag("How do I change my registered email address?");
+        assertNotNull(res);
+        assertTrue(res.getAnswer().contains("verification link will be sent"));
+        assertTrue(res.getAnswer().contains("Profile -> Contact Information"));
+    }
 }

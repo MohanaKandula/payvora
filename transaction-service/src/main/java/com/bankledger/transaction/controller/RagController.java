@@ -10,7 +10,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/support/rag")
-@CrossOrigin(origins = "*")
 public class RagController {
 
     @Autowired

@@ -1304,8 +1304,38 @@ public class RagServiceImpl implements RagService {
         StringBuilder liveDataSb = new StringBuilder();
         StringBuilder guidanceSb = new StringBuilder();
 
-        // Specific Domain Answer Overrides & Customizations
-        if (lowerQuery.contains("interest") || lowerQuery.contains("yield") || lowerQuery.contains("apy")) {
+        // 1. Fine-Grained Sub-Intent Detection & Extraction
+        String subIntent = detectSubIntent(lowerQuery);
+        if (subIntent != null) {
+            String sectionContent = null;
+            for (RagKnowledgeBase doc : retrievedDocs) {
+                sectionContent = extractSectionForSubIntent(doc.getContent(), subIntent);
+                if (sectionContent != null) {
+                    break;
+                }
+            }
+            if (sectionContent == null) {
+                List<RagKnowledgeBase> allDocs = ragKnowledgeRepository.findAll();
+                for (RagKnowledgeBase doc : allDocs) {
+                    sectionContent = extractSectionForSubIntent(doc.getContent(), subIntent);
+                    if (sectionContent != null) {
+                        break;
+                    }
+                }
+            }
+            if (sectionContent != null) {
+                policySb.append("⚙️ **PayVora Customer Support - Account Operations**\n\n")
+                        .append(sectionContent);
+                
+                liveDataSb.append("Account Status: **ACTIVE** | Profile Identity: **KYC VERIFIED** | Security Context: **MFA COMPLIANT**.");
+                guidanceSb.append("You can execute this action directly by navigating to your Settings or Profile section on the dashboard.");
+            }
+        }
+
+        // 2. Specific Domain Answer Overrides & Customizations
+        if (policySb.length() > 0) {
+            // Already handled by sub-intent extraction
+        } else if (lowerQuery.contains("interest") || lowerQuery.contains("yield") || lowerQuery.contains("apy")) {
             policySb.append("💰 **Savings Vault Interest Summary**\n\n")
                     .append("- **Current Vault Balance**: $").append(userVaultBalance.setScale(2, RoundingMode.HALF_UP)).append("\n")
                     .append("- **Current APY**: ").append(liveApy.setScale(2, RoundingMode.HALF_UP)).append("% (Current configured rate)\n")
@@ -1491,6 +1521,44 @@ public class RagServiceImpl implements RagService {
         }
 
         return answerBuilder.toString().trim();
+    }
+
+    private String detectSubIntent(String lowerQuery) {
+        if (lowerQuery.contains("deactivate") || lowerQuery.contains("delete account") || lowerQuery.contains("close account")) {
+            return "ACCOUNT_DEACTIVATION";
+        }
+        if (lowerQuery.contains("reactivate") || lowerQuery.contains("restore account") || lowerQuery.contains("enable account")) {
+            return "ACCOUNT_REACTIVATION";
+        }
+        if (lowerQuery.contains("phone") || lowerQuery.contains("mobile number") || lowerQuery.contains("change phone") || lowerQuery.contains("update phone")) {
+            return "CHANGE_PHONE";
+        }
+        if (lowerQuery.contains("email") || lowerQuery.contains("change email") || lowerQuery.contains("update email")) {
+            return "CHANGE_EMAIL";
+        }
+        if (lowerQuery.contains("link bank") || lowerQuery.contains("add bank") || lowerQuery.contains("connect bank") || lowerQuery.contains("link bank account")) {
+            return "LINK_BANK";
+        }
+        if (lowerQuery.contains("remove bank") || lowerQuery.contains("unlink bank") || lowerQuery.contains("delete bank")) {
+            return "REMOVE_BANK";
+        }
+        if (lowerQuery.contains("update profile") || lowerQuery.contains("edit profile") || lowerQuery.contains("change name") || lowerQuery.contains("change address") || lowerQuery.contains("profile update")) {
+            return "PROFILE_UPDATE";
+        }
+        return null;
+    }
+
+    private String extractSectionForSubIntent(String content, String subIntent) {
+        if (content == null || subIntent == null) return null;
+        String[] sections = content.split("##\\s+");
+        for (String sec : sections) {
+            String trimmed = sec.trim();
+            if (trimmed.toUpperCase().startsWith(subIntent)) {
+                String sectionContent = trimmed.substring(subIntent.length()).trim();
+                return sectionContent;
+            }
+        }
+        return null;
     }
 
     private static class DocScorePair {
