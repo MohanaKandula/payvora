@@ -336,4 +336,14 @@ public class RagServiceCustomerSupportTest {
         assertTrue(res.getAnswer().contains("Yield Engine State"));
         assertTrue(res.getAnswer().contains("Live Telemetry & Operational Status"));
     }
+
+    @Test
+    void test24_AdminDashboard_GeneralActivitySummary() {
+        // General query run with isAdmin = true
+        RagResponseDto res = ragService.queryRag("Explain today's treasury activity", "admin-id", true);
+        assertNotNull(res);
+        assertEquals("ADMIN_OPERATIONAL_INVESTIGATOR", res.getCategory());
+        assertTrue(res.getAnswer().contains("PAYVORA SYSTEM OPERATIONAL SUMMARY"));
+        assertTrue(res.getAnswer().contains("Owner Treasury"));
+    }
 }
