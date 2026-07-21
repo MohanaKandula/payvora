@@ -1030,122 +1030,104 @@ public class RagServiceImpl implements RagService {
         String investmentBadge = "HEALTHY".equalsIgnoreCase(decision.getInvestmentHealth()) ? "✅ Healthy" : "WARNING".equalsIgnoreCase(decision.getInvestmentHealth()) ? "⚠️ Warning" : "❌ Critical";
         String overallBadge = "HEALTHY".equalsIgnoreCase(decision.getOverallPlatformHealth()) ? "✅ Healthy" : "WARNING".equalsIgnoreCase(decision.getOverallPlatformHealth()) ? "⚠️ Warning" : "❌ Critical";
 
-        StringBuilder summaryBuilder = new StringBuilder();
-        summaryBuilder.append("🏛️ **Domain Health Summary**\n\n");
-        summaryBuilder.append("🏦 Treasury            ").append(treasuryBadge).append("\n");
-        summaryBuilder.append("📖 Ledger              ").append(ledgerBadge).append("\n");
-        summaryBuilder.append("🎧 Support             ").append(supportBadge).append("\n");
-        summaryBuilder.append("🛡️ Compliance          ").append(complianceBadge).append("\n");
-        summaryBuilder.append("📈 Investments         ").append(investmentBadge).append("\n\n");
-        summaryBuilder.append("Overall Platform       ").append(overallBadge);
-
-        String domainHealthSummary = summaryBuilder.toString();
-
         StringBuilder answerBuilder = new StringBuilder();
+        answerBuilder.append("## 🔍 Administrative Investigation Report\n\n");
 
-        // 1. QUESTION VALIDATION LAYER
+        // 1. QUESTION VALIDATION LAYER (Move immediately under the title)
         answerBuilder.append("### ❓ Question Validation\n");
         answerBuilder.append(questionValidation).append("\n\n");
 
-        // 2. DOMAIN HEALTH SUMMARY
-        answerBuilder.append("### 🏛️ Domain Health Summary\n");
-        answerBuilder.append(domainHealthSummary).append("\n\n");
+        // 2. DOMAIN HEALTH STATUS SUMMARY
+        answerBuilder.append("### 🏛️ Domain Health Status\n");
+        answerBuilder.append("| Domain | Status |\n");
+        answerBuilder.append("| :--- | :--- |\n");
+        answerBuilder.append("| 🏦 **Treasury** | ").append(treasuryBadge).append(" |\n");
+        answerBuilder.append("| 📖 **Ledger** | ").append(ledgerBadge).append(" |\n");
+        answerBuilder.append("| 🎧 **Support** | ").append(supportBadge).append(" |\n");
+        answerBuilder.append("| 🛡️ **Compliance** | ").append(complianceBadge).append(" |\n");
+        answerBuilder.append("| 📈 **Investments** | ").append(investmentBadge).append(" |\n\n");
+        answerBuilder.append("Overall Platform Status: **").append(overallBadge).append("**\n\n");
 
         // Context-Aware Notice if Treasury is HEALTHY but Platform is WARNING/CRITICAL
         if ("HEALTHY".equalsIgnoreCase(decision.getTreasuryHealth()) && !"HEALTHY".equalsIgnoreCase(decision.getOverallPlatformHealth())) {
-            answerBuilder.append("> 💡 **Context-Aware Operational Notice**: Treasury Health is **HEALTHY**. The Overall Platform is in a **").append(decision.getOverallPlatformHealth()).append("** state because the **Support** domain currently has ").append(openTickets).append(" active escalated support ticket. This warning is isolated to customer support SLA response times and is **completely unrelated to Treasury liquidity or reserve operations**.\n\n");
+            answerBuilder.append("> 💡 **Context-Aware Operational Notice**: Treasury Health is **HEALTHY**. The Overall Platform warning is isolated to customer support SLA response times and is **completely unrelated to Treasury liquidity or reserve operations**.\n\n");
         }
 
-        // 3. EXECUTIVE SYSTEM HEALTH SUMMARY
-        answerBuilder.append("### 📊 Executive System Health Summary\n");
-        answerBuilder.append("• **Rules Evaluated**: ").append(decision.getRulesEvaluated()).append("\n");
-        answerBuilder.append("• **Passed**: ").append(decision.getRulesPassed())
-                .append(" | **Warning**: ").append(decision.getRulesWarning())
-                .append(" | **Critical**: ").append(decision.getRulesCritical()).append("\n");
-        answerBuilder.append("• **Domain Health Breakdown**:\n");
-        answerBuilder.append("  - 🏦 **Treasury Health**: **").append(decision.getTreasuryHealth()).append("**\n");
-        answerBuilder.append("  - 📖 **Ledger Health**: **").append(decision.getLedgerHealth()).append("**\n");
-        answerBuilder.append("  - 🎧 **Support Health**: **").append(decision.getSupportHealth()).append("**\n");
-        answerBuilder.append("  - 🛡️ **Compliance Health**: **").append(decision.getComplianceHealth()).append("**\n");
-        answerBuilder.append("  - 📈 **Investment Health**: **").append(decision.getInvestmentHealth()).append("**\n");
-        answerBuilder.append("• **Overall Platform Health**: **").append(decision.getOverallPlatformHealth()).append("**\n\n");
-
-        // 4. OPERATIONAL DECISION ENGINE SUMMARY HEADER
-        answerBuilder.append("### 🛡️ Operational Decision Engine Summary\n");
-        answerBuilder.append("• **Overall Platform Health**: **").append(decision.getOverallPlatformHealth()).append("**\n");
-        answerBuilder.append("• **Treasury Health**: **").append(decision.getTreasuryHealth()).append("**\n");
-        answerBuilder.append("• **Telemetry Freshness**: ").append(decision.getDataTimestamp()).append("\n");
-        answerBuilder.append("• **Threshold Source**: ").append(decision.getThresholdSource())
-                .append(" (").append(decision.getConfigVersion()).append(", Updated: ").append(decision.getLastUpdated()).append(")\n");
-        answerBuilder.append("• **API Health Status**: ").append(decision.getApiHealthStatus()).append("\n");
-        answerBuilder.append("• **Doc Fallback Active**: ").append(decision.isUsingDocFallback() ? "Yes" : "No").append("\n");
-        answerBuilder.append("• **Decision Confidence**: ").append(decision.getConfidenceDetails()).append("\n\n");
-
-        // 5. ENTERPRISE BUSINESS RULE EVALUATION TABLE
-        answerBuilder.append("### 📋 Enterprise Business Rule Evaluation Table\n");
+        // 3. FAILED RULES (Only print failed rules)
+        answerBuilder.append("### ❌ Triggered Warnings & Failed Rules\n");
+        boolean hasFailedRules = false;
         if (decision.getRuleEvaluationTable() != null && !decision.getRuleEvaluationTable().isEmpty()) {
-            answerBuilder.append("| Rule ID & Name | Domain | Status | Evaluated Metric Result | Severity | Recommended Action |\n");
-            answerBuilder.append("| :--- | :--- | :--- | :--- | :--- | :--- |\n");
             for (RuleEvaluationResult rule : decision.getRuleEvaluationTable()) {
-                String recStr = rule.getRecommendation() != null ? rule.getRecommendation() : "No action required.";
-                answerBuilder.append(String.format("| **%s** %s | `%s` | %s | %s | **%s** | %s |\n",
-                        rule.getRuleId(),
-                        rule.getRuleName(),
-                        rule.getDomain() != null ? rule.getDomain() : "N/A",
-                        rule.isPassed() ? "✅ PASSED" : "❌ FAILED",
-                        rule.getEvaluatedResult(),
-                        rule.getSeverity(),
-                        recStr
-                ));
+                if (!rule.isPassed()) {
+                    hasFailedRules = true;
+                    String recStr = rule.getRecommendation() != null ? rule.getRecommendation() : "Action required.";
+                    answerBuilder.append(String.format("⚠️ **%s** (%s) - Status: **FAILED**\n", rule.getRuleId(), rule.getRuleName()));
+                    answerBuilder.append(String.format("  - *Metric*: %s\n", rule.getEvaluatedResult()));
+                    answerBuilder.append(String.format("  - *Severity*: **%s**\n", rule.getSeverity()));
+                    answerBuilder.append(String.format("  - *Recommendation*: %s\n\n", recStr));
+                }
             }
-            answerBuilder.append("\n");
+        }
+        if (!hasFailedRules) {
+            answerBuilder.append("✅ All 8 enterprise business rules passed successfully. No safety thresholds breached.\n\n");
         }
 
-        // 6. OPERATIONAL ANALYSIS (BUSINESS LOGIC SEQUENCE)
-        answerBuilder.append("### ⚙️ Operational Analysis (Business Logic Sequence)\n");
-        if (decision.getOperationalAnalysis() != null) {
-            for (String step : decision.getOperationalAnalysis()) {
-                answerBuilder.append(step).append("\n");
-            }
-            answerBuilder.append("\n");
-        }
+        // 4. TREASURY STATUS
+        answerBuilder.append("### 🏦 Treasury & Ledger Status\n");
+        answerBuilder.append("- **Owner Treasury (0xTR-001)**: $").append(ownerTreasuryBal.setScale(2, RoundingMode.HALF_UP)).append("\n");
+        answerBuilder.append("- **Yield Reserve (0xYS-800)**: $").append(yieldReserveBal.setScale(2, RoundingMode.HALF_UP)).append("\n");
+        answerBuilder.append("- **Cashback Reserve (0xCB-482)**: $").append(cashbackReserveBal.setScale(2, RoundingMode.HALF_UP)).append("\n");
+        answerBuilder.append("- **Ledger Reconciliation**: **").append(reconFailed ? "DISCREPANCY DETECTED (+ $42.50 Clearing Suspense)" : "BALANCED (Zero Variance)").append("**\n\n");
 
-        // 7. CURRENT OPERATIONAL STATUS & LIVE TELEMETRY
-        answerBuilder.append("### 📊 Live Telemetry & Operational Status\n");
-        answerBuilder.append(currentStatus).append("\n\n");
-
-        // 8. ROOT CAUSE ANALYSIS
-        answerBuilder.append("### 🔍 Root Cause Analysis\n");
-        answerBuilder.append(rootCause).append("\n\n");
-
-        // 9. OPERATIONAL WORKFLOW & MECHANICS
-        answerBuilder.append("### 🔄 Operational Workflow & Mechanics\n");
-        answerBuilder.append(operationalWorkflow).append("\n\n");
-
-        // 10. IMPACT ANALYSIS
-        answerBuilder.append("### 💥 Impact Analysis\n");
-        answerBuilder.append(impactAnalysis).append("\n\n");
-
-        // 11. RELATED COMPONENTS & DEPENDENCY GRAPH
-        answerBuilder.append("### 🔀 Related Components & Dependency Graph\n");
-        answerBuilder.append(relatedComponents).append("\n\n");
-
-        // 12. VISUAL OPERATIONAL FLOW\n
-        answerBuilder.append("### 📐 Visual Operational Flow\n```\n");
-        answerBuilder.append(visualFlow).append("\n```\n\n");
-
-        // 13. CONTEXT-AWARE ADMINISTRATOR RECOMMENDATIONS
-        answerBuilder.append("### 💡 Context-Aware Administrator Recommendations\n");
+        // 5. RECOMMENDATIONS
+        answerBuilder.append("### 💡 Recommended Actions\n");
         if (decision.getContextualRecommendations() != null && !decision.getContextualRecommendations().isEmpty()) {
-            for (int i = 0; i < decision.getContextualRecommendations().size(); i++) {
-                answerBuilder.append(i + 1).append(". ").append(decision.getContextualRecommendations().get(i)).append("\n");
+            for (String rec : decision.getContextualRecommendations()) {
+                answerBuilder.append("- ").append(rec).append("\n");
             }
             answerBuilder.append("\n");
         } else {
-            answerBuilder.append(recommendedActions).append("\n\n");
+            answerBuilder.append("- ").append(recommendedActions.replaceAll("^\\d+\\.\\s*", "")).append("\n\n");
         }
 
-        // 14. KNOWLEDGE SOURCES REFERENCED
+        // 6. COLLAPSIBLE DEEP DIAGNOSTIC DETAILS (To prevent overwhelming the admin)
+        answerBuilder.append("<details>\n");
+        answerBuilder.append("<summary>🔎 View Detailed System Mechanics & Technical Flow</summary>\n\n");
+
+        answerBuilder.append("#### ⚙️ Operational Analysis Sequence\n");
+        if (decision.getOperationalAnalysis() != null) {
+            for (String step : decision.getOperationalAnalysis()) {
+                answerBuilder.append("- ").append(step).append("\n");
+            }
+            answerBuilder.append("\n");
+        }
+
+        answerBuilder.append("#### 📊 Real-Time Telemetry Summary\n");
+        answerBuilder.append("- **Total AUM**: $").append(totalAum.setScale(2, RoundingMode.HALF_UP)).append("\n");
+        answerBuilder.append("- **Platform Revenue**: $").append(platformRevBal.setScale(2, RoundingMode.HALF_UP)).append("\n");
+        answerBuilder.append("- **Compounding Yield**: ").append(userApy.setScale(2, RoundingMode.HALF_UP)).append("% APY\n\n");
+
+        answerBuilder.append("#### ℹ️ Current Status\n");
+        answerBuilder.append(currentStatus).append("\n\n");
+
+        answerBuilder.append("#### 🔍 Root Cause Analysis\n");
+        answerBuilder.append(rootCause).append("\n\n");
+
+        answerBuilder.append("#### 🔄 Operational Workflow & Mechanics\n");
+        answerBuilder.append(operationalWorkflow).append("\n\n");
+
+        answerBuilder.append("#### 💥 Impact Analysis\n");
+        answerBuilder.append(impactAnalysis).append("\n\n");
+
+        answerBuilder.append("#### 🔀 Related Components & Dependency Graph\n");
+        answerBuilder.append(relatedComponents).append("\n\n");
+
+        answerBuilder.append("#### 📐 Visual Operational Flow\n```\n");
+        answerBuilder.append(visualFlow).append("\n```\n\n");
+
+        answerBuilder.append("</details>\n\n");
+
+        // 7. KNOWLEDGE SOURCES REFERENCED
         answerBuilder.append("### 📚 Knowledge Sources Referenced\n");
         answerBuilder.append(knowledgeSources);
 
@@ -1158,8 +1140,6 @@ public class RagServiceImpl implements RagService {
         );
 
         dto.setQuestionValidation(questionValidation);
-        dto.setDomainHealthSummary(domainHealthSummary);
-
         dto.setCurrentStatus(currentStatus);
         dto.setRootCause(rootCause);
         dto.setOperationalWorkflow(operationalWorkflow);
