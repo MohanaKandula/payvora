@@ -285,6 +285,7 @@ public class RagServiceImpl implements RagService {
             for (Map.Entry<String, Double> entry : topCategories) {
                 targetCategories.add(entry.getKey());
             }
+            targetCategories.add("PRODUCT_KNOWLEDGE"); // Always include system architecture, ledger, and operational docs!
             for (RagKnowledgeBase doc : allDocs) {
                 String fname = doc.getSourceDocument();
                 if (fname.contains(": ")) {
