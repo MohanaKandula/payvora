@@ -1516,7 +1516,7 @@ public class RagServiceImpl implements RagService {
                     .append("- **Interest APY Rate**: ").append(liveApy.setScale(2, RoundingMode.HALF_UP)).append("% APY\n\n")
                     .append("Daily yield payouts are compiled and compounded directly into your principal balance at midnight (00:00 UTC) every day.");
             guidanceSb.append("Navigate to Investments under /investments to view transaction logs of daily interest accruals.");
-        } else if (lowerQuery.contains("interest") && (lowerQuery.contains("today") || lowerQuery.contains("will i earn"))) {
+        } else if (lowerQuery.contains("interest") && (lowerQuery.contains("today") || lowerQuery.contains("will i earn") || lowerQuery.contains("calculat") || lowerQuery.contains("project") || lowerQuery.contains("formula"))) {
             BigDecimal dailyInterest = userVaultBalance.multiply(liveApy)
                     .divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP)
                     .divide(new BigDecimal("365"), 4, RoundingMode.HALF_UP);
