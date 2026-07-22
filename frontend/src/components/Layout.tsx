@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { FloatingHelpWidget } from './FloatingHelpWidget';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { axiosInstance } from '../api/axiosInstance';
 import { LayoutDashboard, Receipt, UserCheck, LogOut, Wallet, ShieldAlert, BarChart3, CreditCard, Calendar, ShieldCheck, User, PiggyBank, Bell, Lock, RefreshCw, Gift, HelpCircle, Bot } from 'lucide-react';
@@ -441,8 +440,6 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         </main>
       </div>
 
-      {/* Floating Help & Guidance Drawer */}
-      <FloatingHelpWidget />
     </div>
   );
 };

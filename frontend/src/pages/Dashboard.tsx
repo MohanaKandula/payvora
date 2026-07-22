@@ -1027,7 +1027,7 @@ export const Dashboard: React.FC = () => {
       {/* Quick transaction Modals */}
       {activeModal && activeModal === 'transfer' && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="w-full max-w-lg h-[500px] glass-panel rounded-3xl relative glow-purple border-violet-500/20 flex flex-col overflow-hidden">
+          <div className="w-full max-w-lg h-[80vh] max-h-[500px] glass-panel rounded-3xl relative glow-purple border-violet-500/20 flex flex-col overflow-hidden">
             {/* Close Button */}
             <button
               onClick={() => { setActiveModal(null); resetForm(); }}
@@ -1054,9 +1054,9 @@ export const Dashboard: React.FC = () => {
                     </label>
                     <div className="flex gap-2">
                       <input
-                        type="text"
+                        type="tel"
                         value={targetAccount}
-                        onChange={(e) => setTargetAccount(e.target.value)}
+                        onChange={(e) => setTargetAccount(e.target.value.replace(/[^0-9+]/g, ''))}
                         placeholder="e.g. +1234567890"
                         className="flex-1 px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/5 focus:border-violet-500/50 focus:outline-none text-white text-xs font-mono"
                       />
