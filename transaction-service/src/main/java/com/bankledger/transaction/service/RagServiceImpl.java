@@ -189,6 +189,19 @@ public class RagServiceImpl implements RagService {
             userUuid = UUID.fromString("e1b07221-50e5-4d76-bc34-31f41e57c600");
         }
 
+        boolean resolvedIsAdmin = isAdmin;
+        try {
+            if (userUuid != null && !resolvedIsAdmin) {
+                java.util.Map details = accountClient.getAccountDetails(userUuid);
+                if (details != null && details.containsKey("role")) {
+                    String role = details.get("role").toString();
+                    if ("ADMIN".equalsIgnoreCase(role) || "ROLE_ADMIN".equalsIgnoreCase(role)) {
+                        resolvedIsAdmin = true;
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+
         // ====================================================================
         // ROUTER INTENT DETECTOR LAYER (Admin Operations Assistant vs Customer Support)
         // ====================================================================
@@ -218,11 +231,13 @@ public class RagServiceImpl implements RagService {
                 lowerQuery.contains("compliance operations") || lowerQuery.contains("operational decision engine") ||
                 lowerQuery.contains("support ticket analytics") || lowerQuery.contains("platform health") ||
                 lowerQuery.contains("enterprise operations") || lowerQuery.contains("reconciliation failing") ||
-                lowerQuery.contains("yield distribution") || lowerQuery.contains("system health summary");
+                lowerQuery.contains("yield distribution") || lowerQuery.contains("system health summary") ||
+                lowerQuery.contains("analytics") || lowerQuery.contains("telemetry") ||
+                lowerQuery.contains("dashboard") || lowerQuery.contains("metrics");
 
         // Explicit Route Decision: Route to Admin Operations Assistant if the user is an admin, OR if the query is an admin operational topic
-        if (isAdmin || (!isCustomerSupportTopic && isAdminOperationalTopic)) {
-            if (!isAdmin) {
+        if (resolvedIsAdmin || (!isCustomerSupportTopic && isAdminOperationalTopic)) {
+            if (!resolvedIsAdmin) {
                 return new RagResponseDto(
                     userQuery,
                     "PayVora Access Control Policy: You do not have permission to access internal banking operations.",
@@ -692,8 +707,8 @@ public class RagServiceImpl implements RagService {
         String selectedWallet = context != null && context.get("selectedWallet") != null ? context.get("selectedWallet").toString() : "";
         String selectedTicket = context != null && context.get("selectedTicket") != null ? context.get("selectedTicket").toString() : "";
 
-        // 1. Treasury Health / Status
-        if (lowerQuery.contains("treasury health") || lowerQuery.contains("treasury warning") || lowerQuery.contains("treasury status")) {
+        // 1. Treasury Health / Status & Live Analytics Telemetry
+        if (lowerQuery.contains("treasury health") || lowerQuery.contains("treasury warning") || lowerQuery.contains("treasury status") || lowerQuery.contains("analytics") || lowerQuery.contains("telemetry") || lowerQuery.contains("metrics") || lowerQuery.contains("dashboard")) {
             boolean isTreasuryHealthy = "HEALTHY".equalsIgnoreCase(decision.getTreasuryHealth());
 
             currentStatus = String.format("%s (Active Treasury Monitor)\n" +
@@ -1035,7 +1050,7 @@ public class RagServiceImpl implements RagService {
         // QUESTION VALIDATION LAYER & DOMAIN HEALTH SUMMARY
         // ==========================================
         String questionValidation = "";
-        if (lowerQuery.contains("treasury health") || lowerQuery.contains("treasury warning") || lowerQuery.contains("treasury status")) {
+        if (lowerQuery.contains("treasury health") || lowerQuery.contains("treasury warning") || lowerQuery.contains("treasury status") || lowerQuery.contains("analytics") || lowerQuery.contains("telemetry") || lowerQuery.contains("metrics") || lowerQuery.contains("dashboard")) {
             boolean isTreasuryHealthy = "HEALTHY".equalsIgnoreCase(decision.getTreasuryHealth());
             boolean isOverallHealthy = "HEALTHY".equalsIgnoreCase(decision.getOverallPlatformHealth());
             if (isTreasuryHealthy) {
