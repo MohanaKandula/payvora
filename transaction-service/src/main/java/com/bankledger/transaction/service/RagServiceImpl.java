@@ -1522,8 +1522,11 @@ public class RagServiceImpl implements RagService {
                     .divide(new BigDecimal("365"), 4, RoundingMode.HALF_UP);
             
             policySb.append("🧮 **Daily Interest Accrual Projection**\n\n")
-                    .append("Daily interest is calculated using the following accrual formula:\n")
-                    .append("$$\\text{Daily Interest} = \\frac{\\text{Vault Balance} \\times (\\text{APY} / 100)}{365}$$\n\n")
+                    .append("Daily interest is calculated using this simple formula:\n\n")
+                    .append("👉 **Daily Interest = (Vault Balance × (APY ÷ 100)) ÷ 365**\n\n")
+                    .append("### How it works step-by-step:\n")
+                    .append("1. **Annual Yield**: Multiply your Savings Vault Balance by the APY (divided by 100) to find your interest for a full year.\n")
+                    .append("2. **Daily Share**: Divide that annual amount by 365 days to get your daily payout.\n\n")
                     .append("• **Your Vault Balance**: $").append(userVaultBalance.setScale(2, RoundingMode.HALF_UP)).append("\n")
                     .append("• **Active APY Rate**: ").append(liveApy.setScale(2, RoundingMode.HALF_UP)).append("%\n")
                     .append("• **Projected Daily Accrual**: **$").append(dailyInterest.setScale(4, RoundingMode.HALF_UP)).append("**\n\n")
