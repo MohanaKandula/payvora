@@ -1516,6 +1516,39 @@ public class RagServiceImpl implements RagService {
                     .append("- **Interest APY Rate**: ").append(liveApy.setScale(2, RoundingMode.HALF_UP)).append("% APY\n\n")
                     .append("Daily yield payouts are compiled and compounded directly into your principal balance at midnight (00:00 UTC) every day.");
             guidanceSb.append("Navigate to Investments under /investments to view transaction logs of daily interest accruals.");
+        } else if (lowerQuery.contains("interest") && (lowerQuery.contains("after") || lowerQuery.contains("project") || lowerQuery.contains("over time") || lowerQuery.contains("forecast")) && (lowerQuery.contains("days") || lowerQuery.contains("day") || lowerQuery.contains("week") || lowerQuery.contains("month") || lowerQuery.contains("year"))) {
+            int days = 7;
+            java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\\b(\\d+)\\b");
+            java.util.regex.Matcher matcher = pattern.matcher(lowerQuery);
+            if (matcher.find()) {
+                try {
+                    days = Integer.parseInt(matcher.group(1));
+                } catch (Exception ignored) {}
+            } else if (lowerQuery.contains("week")) {
+                days = 7;
+            } else if (lowerQuery.contains("month")) {
+                days = 30;
+            } else if (lowerQuery.contains("year")) {
+                days = 365;
+            }
+
+            double apyRate = liveApy.doubleValue();
+            double dailyRate = apyRate / 100.0 / 365.0;
+            double initialBalance = userVaultBalance.doubleValue();
+            double projectedBalance = initialBalance * Math.pow(1.0 + dailyRate, days);
+            double totalInterestEarned = projectedBalance - initialBalance;
+
+            policySb.append("📈 **Savings Vault Interest Projection (").append(days).append(" Days)**\n\n")
+                    .append("Here is the compounding projection for your Savings Vault over the next **").append(days).append(" days**:\n\n")
+                    .append("• **Starting Vault Balance**: $").append(userVaultBalance.setScale(2, RoundingMode.HALF_UP)).append("\n")
+                    .append("• **Active APY Rate**: ").append(liveApy.setScale(2, RoundingMode.HALF_UP)).append("%\n")
+                    .append("• **Projected Interest Earned**: **+$").append(BigDecimal.valueOf(totalInterestEarned).setScale(4, RoundingMode.HALF_UP)).append("**\n")
+                    .append("• **Projected Ending Balance**: **$").append(BigDecimal.valueOf(projectedBalance).setScale(2, RoundingMode.HALF_UP)).append("**\n\n")
+                    .append("### Compounding Math & Calculation:\n")
+                    .append("Your interest compounds daily at a daily rate of **").append(String.format("%.6f%%", dailyRate * 100)).append("** per day.\n\n")
+                    .append("👉 **Ending Balance = Starting Balance × (1 + Daily Rate)^Days**\n\n")
+                    .append("This projection assumes zero additional deposits or withdrawals are made during the ").append(days).append("-day period.");
+            guidanceSb.append("Keep your funds deposited in the Savings Vault to earn maximum compounded yield.");
         } else if (lowerQuery.contains("interest") && (lowerQuery.contains("today") || lowerQuery.contains("will i earn") || lowerQuery.contains("calculat") || lowerQuery.contains("project") || lowerQuery.contains("formula"))) {
             BigDecimal dailyInterest = userVaultBalance.multiply(liveApy)
                     .divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP)
