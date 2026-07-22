@@ -1191,7 +1191,7 @@ export const AdminPanel: React.FC = () => {
                   <span className="text-[10px] font-mono text-gray-400">Real-Time Ledger Balances</span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
                   {/* 1. Owner Treasury Wallet */}
                   <div className="glass-panel p-5 rounded-2xl border border-indigo-500/20 bg-gradient-to-br from-indigo-950/30 via-[#0d0d14] to-[#08080c] shadow-lg relative overflow-hidden group">
                     <div className="flex justify-between items-start">
@@ -1261,6 +1261,24 @@ export const AdminPanel: React.FC = () => {
                     <div className="mt-3 pt-2 border-t border-white/5 flex justify-between items-center text-[9px] text-gray-500 font-mono">
                       <span>Min Threshold: $100.00</span>
                       <span className="text-amber-400 font-semibold">Rewards #05</span>
+                    </div>
+                  </div>
+
+                  {/* 5. User Invested Vault Assets Card */}
+                  <div className="glass-panel p-5 rounded-2xl border border-violet-500/20 bg-gradient-to-br from-violet-950/30 via-[#0d0d14] to-[#08080c] shadow-lg relative overflow-hidden group">
+                    <div className="flex justify-between items-start">
+                      <span className="text-[9px] font-black text-violet-400 uppercase tracking-widest block">User Vault Assets</span>
+                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-400 border border-violet-500/20">
+                        Invested
+                      </span>
+                    </div>
+                    <p className="text-xl font-black text-white font-display mt-2">
+                      ${totalUserVaultAssets.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-[10px] text-gray-400 mt-1">Total locked user capital earning APY yield</p>
+                    <div className="mt-3 pt-2 border-t border-white/5 flex justify-between items-center text-[9px] text-gray-500 font-mono">
+                      <span>Vault Accounts: {totalActiveVaultUsers}</span>
+                      <span className="text-violet-400 font-semibold">Vault #04</span>
                     </div>
                   </div>
                 </div>
