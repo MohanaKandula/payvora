@@ -248,37 +248,6 @@ export const Rewards: React.FC = () => {
     createOfferMutation.mutate(newOffer);
   };
 
-  const getTierDetails = (level: string) => {
-    switch (level) {
-      case 'PLATINUM': return {
-        gradient: 'from-slate-100 via-zinc-300 to-slate-400 text-slate-900 border-slate-300/30',
-        bgPill: 'bg-slate-500/20 text-white border-slate-450/40',
-        text: 'Platinum Elite Member',
-        perks: 'Bonus Cashback multiplier: 2.0x • Free Instant Wire Redemptions'
-      };
-      case 'GOLD': return {
-        gradient: 'from-amber-400 via-yellow-500 to-amber-600 text-amber-950 border-amber-500/40',
-        bgPill: 'bg-amber-650/20 text-white border-amber-500/40',
-        text: 'Gold VIP Member',
-        perks: 'Bonus Cashback multiplier: 1.5x • Priority customer support responses'
-      };
-      case 'SILVER': return {
-        gradient: 'from-slate-300 via-slate-400 to-zinc-500 text-slate-950 border-slate-400/40',
-        bgPill: 'bg-slate-600/20 text-white border-slate-500/40',
-        text: 'Silver Member',
-        perks: 'Bonus Cashback multiplier: 1.2x • Streak multiplier active'
-      };
-      default: return {
-        gradient: 'from-orange-700 via-amber-800 to-orange-950 text-orange-100 border-orange-800/40',
-        bgPill: 'bg-orange-900/40 text-orange-200 border-orange-800/30',
-        text: 'Bronze Starter Member',
-        perks: 'Basic rewards rate • Standard checkout cashback campaigns'
-      };
-    }
-  };
-
-  const tier = wallet ? getTierDetails(wallet.loyaltyLevel) : null;
-
   if (false as any) {
     console.log(Calendar, AlertCircle, Play, Zap, UserPlus, Lock, X, activeTab, setActiveTab, setOfferType, setMinAmt, setCbPercent, setFixedCb, setMaxCb, adminOfferSuccess, refetchReferredUsers, allOffers, analytics, toggleOfferMutation, handleAdminOfferSubmit);
   }

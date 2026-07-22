@@ -15,8 +15,4 @@ The Rewards page (`/rewards`) allows members to view active promotion offers, tr
 3. **Redeem to Wallet**:
    - A manual form allowing members to transfer their available cashback balance 1:1 into their primary Spendable Wallet.
    - **Requirement**: Member's identity verification (KYC) must be in an `APPROVED` status to execute a redemption.
-4. **Loyalty Tiers**:
-   - **Bronze Starter**: Basic rewards rate.
-   - **Silver**: 1.2x streak multiplier active.
-   - **Gold VIP**: 1.5x cashback multiplier and priority support access.
-   - **Platinum Elite**: 2.0x cashback multiplier and free instant wire redemptions.
+

@@ -1494,7 +1494,7 @@ public class RagServiceImpl implements RagService {
                     .append("- **Earned This Month**: $6.82\n")
                     .append("- **Total Lifetime Cashback**: $").append(BigDecimal.valueOf(totalCashbackEarned).setScale(2, RoundingMode.HALF_UP)).append("\n\n")
                     .append("Cashback rewards can be redeemed instantly as a credit deposit to your Spendable Wallet once they reach a minimum of $5.00.");
-            guidanceSb.append("Go to /rewards to check loyalty level or check-in for daily spin bonuses.");
+            guidanceSb.append("Go to /rewards to manage your cashback rewards or invite friends.");
         } else if (lowerQuery.contains("cashback") && (lowerQuery.contains("active") || lowerQuery.contains("offers") || lowerQuery.contains("today"))) {
             policySb.append("🛍️ **Active Cashback Campaigns**\n\n")
                     .append("Here are the active promotional reward offers today:\n\n")
