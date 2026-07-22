@@ -1013,6 +1013,7 @@ export const AdminPanel: React.FC = () => {
               refetchTreasuryHistory();
               refetchSystemWallets();
               refetchAuditLogs();
+              refetchVaultAccounts();
               if (selectedWalletId) refetchWalletEntries();
             }}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] text-xs font-semibold text-gray-300 transition-all active:scale-95"
