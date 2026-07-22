@@ -235,18 +235,8 @@ public class RagServiceImpl implements RagService {
                 lowerQuery.contains("analytics") || lowerQuery.contains("telemetry") ||
                 lowerQuery.contains("dashboard") || lowerQuery.contains("metrics");
 
-        // Explicit Route Decision: Route to Admin Operations Assistant if the user is an admin, OR if the query is an admin operational topic
-        if (resolvedIsAdmin || (!isCustomerSupportTopic && isAdminOperationalTopic)) {
-            if (!resolvedIsAdmin) {
-                return new RagResponseDto(
-                    userQuery,
-                    "PayVora Access Control Policy: You do not have permission to access internal banking operations.",
-                    "RBAC_RESTRICTED",
-                    "PayVora Access Control Policy",
-                    0.0
-                );
-            }
-
+        // Explicit Route Decision: Route to Admin Operations Assistant if the user is an admin
+        if (resolvedIsAdmin) {
             System.out.println("🔍 Admin Operational Investigation intent detected for query: " + userQuery);
             System.out.println("🔌 Live APIs invoked (TreasuryService, LedgerService, SupportTicketRepository, CapitalInjectionRepository)");
             Map<String, Object> liveStats = null;
