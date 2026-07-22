@@ -113,6 +113,7 @@ public class RagServiceImpl implements RagService {
             case "vault":
             case "yield_vault":
             case "interest": return "SAVINGS_VAULT";
+            case "analytics":
             case "transactions":
             case "transfers":
             case "ledger": return "TRANSACTIONS";
@@ -1994,7 +1995,7 @@ public class RagServiceImpl implements RagService {
                 q.contains("transfer") || q.contains("deposit") || q.contains("withdraw") || q.contains("deactivate") ||
                 q.contains("delete") || q.contains("phone") || q.contains("kyc") || q.contains("pin") ||
                 q.contains("recharge") || q.contains("bill") || q.contains("goal") || q.contains("statement") ||
-                q.contains("receipt");
+                q.contains("receipt") || q.contains("analytics");
 
         if (hasSupportKeywords && (hasTechnicalKeywords || hasOperationsKeywords)) {
             return QuestionType.HYBRID;
