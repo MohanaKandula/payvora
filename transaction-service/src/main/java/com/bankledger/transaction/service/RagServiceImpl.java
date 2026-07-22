@@ -1465,27 +1465,35 @@ public class RagServiceImpl implements RagService {
         } else {
             // General Document Policy Assembly across all retrieved documents
             if (!retrievedDocs.isEmpty()) {
-                int count = 0;
                 for (RagKnowledgeBase doc : retrievedDocs) {
-                    String content = doc.getContent();
-                    String[] paragraphs = content.split("\n\n");
-                    for (String p : paragraphs) {
-                        String trimmed = p.trim();
-                        if (!trimmed.startsWith("#") && !trimmed.startsWith("##") && !trimmed.startsWith("###") && trimmed.length() > 20) {
-                            String clean = trimmed.replaceAll("(?m)^#+\\s*", "").trim();
-                            if (policySb.length() > 0) policySb.append("\n\n");
-                            policySb.append(clean);
-                            count++;
-                            if (count >= 3) break;
-                        }
+                    if (policySb.length() > 0) {
+                        policySb.append("\n\n---\n\n");
                     }
-                    if (count >= 3) break;
+                    policySb.append("📘 **").append(doc.getTitle()).append("**\n\n")
+                            .append(doc.getContent());
                 }
             }
             if (policySb.length() == 0) {
                 policySb.append("PayVora provides instant transfers, high-yield savings vaults, and automated cashback rewards across all member accounts.");
             }
-            guidanceSb.append("For detailed account operations, explore your dashboard or navigate to /help.");
+            
+            // Build smart guidance based on top categories
+            if (!topCategories.isEmpty()) {
+                String cat = topCategories.get(0).getKey().toLowerCase();
+                if (cat.contains("vault") || cat.contains("interest") || cat.contains("savings")) {
+                    guidanceSb.append("Navigate to the **Savings Vault** page under /vault to view daily yield accruals, calculate potential compounding gains, or deposit/withdraw funds.");
+                } else if (cat.contains("cashback") || cat.contains("reward")) {
+                    guidanceSb.append("Check out the **Rewards Hub** under /rewards to view current cashback percentages, check-in for daily points, or spin the wheel.");
+                } else if (cat.contains("transaction") || cat.contains("transfer") || cat.contains("ledger")) {
+                    guidanceSb.append("You can perform zero-fee instant transfers or view your full transaction history and download statements from the **Statements & History** tab.");
+                } else if (cat.contains("kyc") || cat.contains("compliance") || cat.contains("security")) {
+                    guidanceSb.append("Go to your **Profile & Security Settings** under /security to complete KYC verification, manage MFA, or configure your 4-digit PIN.");
+                } else {
+                    guidanceSb.append("For detailed operations, explore the matching pages in your dashboard or navigate to /help.");
+                }
+            } else {
+                guidanceSb.append("For detailed account operations, explore your dashboard or navigate to /help.");
+            }
         }
 
         // 3-Tier Answer Ordering (Policy -> Live Data -> Guidance)

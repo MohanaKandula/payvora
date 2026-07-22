@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { MarkdownReportRenderer } from '../components/MarkdownReportRenderer';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
@@ -568,7 +569,7 @@ export const HelpCenter: React.FC = () => {
                   </div>
 
                   <div className="space-y-3 pt-1 text-sm text-gray-200 leading-relaxed font-sans">
-                    <div className="whitespace-pre-wrap">{assistantReply}</div>
+                    <MarkdownReportRenderer content={assistantReply} />
                   </div>
                 </div>
               )}
