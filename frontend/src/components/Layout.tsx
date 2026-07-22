@@ -135,10 +135,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const menuItems = [];
 
   if (user?.isAdmin) {
-    // Admins get Admin Dashboard, AI Operations Assistant, Support Desk, Personal Statement, Security, and Profile
+    // Admins get Admin Dashboard, Support Desk, Personal Statement, Security, and Profile
     menuItems.push(
       { name: 'Admin Dashboard', path: '/admin', icon: UserCheck },
-      { name: 'AI Operations Assistant 🤖', path: '/admin?tab=ai-copilot', icon: Bot },
       { name: 'Support Desk 🎧', path: '/admin?tab=support', icon: HelpCircle },
       { name: 'Personal Statement', path: '/statement', icon: Receipt },
       { name: 'Security', path: '/security', icon: ShieldCheck },
