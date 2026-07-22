@@ -94,7 +94,9 @@ public class RagServiceImpl implements RagService {
 
     private String getCategoryForFilename(String name) {
         switch (name.toLowerCase()) {
-            case "wallet": return "WALLET";
+            case "wallet":
+            case "cards":
+            case "card": return "WALLET";
             case "account": return "ACCOUNT";
             case "cashback":
             case "cashback_wallet": return "CASHBACK";
@@ -195,7 +197,8 @@ public class RagServiceImpl implements RagService {
                 lowerQuery.contains("transaction") || lowerQuery.contains("bill") ||
                 lowerQuery.contains("electricity") || lowerQuery.contains("account") ||
                 lowerQuery.contains("deposit") || lowerQuery.contains("withdraw") ||
-                lowerQuery.contains("rebate") || lowerQuery.contains("rent");
+                lowerQuery.contains("rebate") || lowerQuery.contains("rent") ||
+                lowerQuery.contains("card") || lowerQuery.contains("cards");
 
         // 2. Identify Admin Operational Topics
         boolean isAdminOperationalTopic = lowerQuery.contains("treasury health") ||
@@ -292,25 +295,34 @@ public class RagServiceImpl implements RagService {
 
         // 5. Score Candidate Documents via Hybrid Keyword & Vector Relevance
         String cleanedQuery = lowerQuery.replaceAll("[^a-zA-Z0-9\\s]", "");
-        String[] tokens = cleanedQuery.split("\\s+");
+        String[] rawTokens = cleanedQuery.split("\\s+");
+        Set<String> stopWords = new HashSet<>(Arrays.asList(
+            "the", "and", "for", "are", "you", "can", "our", "how", "what", "why", "who", "this", "that", "with", "your", "does", "been", "from", "into", "they", "will", "have", "would", "about", "useful"
+        ));
+
+        List<String> tokenList = new ArrayList<>();
+        for (String t : rawTokens) {
+            if (!stopWords.contains(t) && t.length() >= 3) {
+                tokenList.add(t);
+            }
+        }
 
         List<DocScorePair> scoredDocs = new ArrayList<>();
-        for (RagKnowledgeBase doc : candidateDocs) {
-            double score = 0.0;
-            String docText = (doc.getTitle() + " " + doc.getKeywords() + " " + doc.getContent()).toLowerCase();
-            for (String token : tokens) {
-                if (token.length() >= 3) {
+        if (!tokenList.isEmpty()) {
+            for (RagKnowledgeBase doc : candidateDocs) {
+                double score = 0.0;
+                String docText = (doc.getTitle() + " " + doc.getKeywords() + " " + doc.getContent()).toLowerCase();
+                for (String token : tokenList) {
                     if (doc.getKeywords().toLowerCase().contains(token)) score += 3.0;
                     if (doc.getTitle().toLowerCase().contains(token)) score += 2.0;
                     if (docText.contains(token)) score += 1.0;
                 }
+                if (score > 0) {
+                    scoredDocs.add(new DocScorePair(doc, score));
+                }
             }
-            if (score > 0) {
-                scoredDocs.add(new DocScorePair(doc, score));
-            }
+            scoredDocs.sort((a, b) -> Double.compare(b.score, a.score));
         }
-
-        scoredDocs.sort((a, b) -> Double.compare(b.score, a.score));
 
         // Select top retrieved documents (up to 3 matching docs)
         List<RagKnowledgeBase> retrievedDocs = new ArrayList<>();
@@ -1462,6 +1474,20 @@ public class RagServiceImpl implements RagService {
         } else if (lowerQuery.contains("electricity") || lowerQuery.contains("recharge") || lowerQuery.contains("utility")) {
             policySb.append("PayVora supports instant mobile recharges and utility bill payments (Electricity, Water, Gas, DTH, Broadband) directly from your Spendable Wallet.");
             guidanceSb.append("To pay bills, navigate to Utility Payments from your Spendable Wallet menu.");
+        } else if (lowerQuery.contains("card") || lowerQuery.contains("cards")) {
+            policySb.append("💳 **PayVora Virtual Cards Guide**\n\n")
+                    .append("PayVora allows you to generate and manage virtual cards instantly from your dashboard.\n\n")
+                    .append("**Key Features**:\n")
+                    .append("• **Instant Generation**: Generate a secure 16-digit card number, expiry date, and CVV instantly.\n")
+                    .append("• **Visual Skins**: Choose and customize the visual theme (credit skin) of your virtual card.\n")
+                    .append("• **Security Controls**: Freeze or unfreeze cards instantly to prevent unauthorized usage, or terminate them permanently.\n")
+                    .append("• **Sandboxed Simulations**: Simulate payments or refund reversals using your virtual cards to test integration.\n\n")
+                    .append("**How to use**:\n")
+                    .append("1. Go to your Dashboard and scroll to the **Virtual Cards** section.\n")
+                    .append("2. Click **Create Card** to generate a new card.\n")
+                    .append("3. Select your card to view its CVV, freeze it, or customize its skin.");
+            
+            guidanceSb.append("Navigate to the **Virtual Cards** section on your Dashboard to generate, freeze, or simulate payments with your virtual cards.");
         } else {
             // General Document Policy Assembly across all retrieved documents
             if (!retrievedDocs.isEmpty()) {
@@ -1474,7 +1500,14 @@ public class RagServiceImpl implements RagService {
                 }
             }
             if (policySb.length() == 0) {
-                policySb.append("PayVora provides instant transfers, high-yield savings vaults, and automated cashback rewards across all member accounts.");
+                policySb.append("🔍 **Unresolved Search Inquiry**\n\n")
+                        .append("I couldn't find a direct guide matching your query in the PayVora knowledge base.\n\n")
+                        .append("**Here are some topics you can ask me about**:\n")
+                        .append("• **Spendable Wallet**: How to deposit, link a bank account, or perform transfers.\n")
+                        .append("• **Savings Vault**: APY yield rates, interest calculation, and compounding schedules.\n")
+                        .append("• **Rewards & Cashback**: Cashback percentage rules, utility bill rebates, and spin bonuses.\n")
+                        .append("• **Identity & Security**: KYC verification levels, MFA configuration, and resetting your Transaction PIN.\n")
+                        .append("• **Virtual Cards**: Generating cards, freezing cards, and simulating sandbox transactions.");
             }
             
             // Build smart guidance based on top categories
