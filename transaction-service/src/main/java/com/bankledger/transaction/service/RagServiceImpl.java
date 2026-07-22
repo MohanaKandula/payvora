@@ -276,24 +276,58 @@ public class RagServiceImpl implements RagService {
             }
         }
 
-        // 4. Filter Candidate Knowledge Documents
+        // 4. Filter Candidate Knowledge Documents via Question Type Router
+        QuestionType questionType = classifyQuestionType(lowerQuery);
         List<RagKnowledgeBase> allDocs = ragKnowledgeRepository.findAll();
         List<RagKnowledgeBase> candidateDocs = new ArrayList<>();
 
-        if (!lowConfidenceFallback && !topCategories.isEmpty()) {
-            Set<String> targetCategories = new HashSet<>();
-            for (Map.Entry<String, Double> entry : topCategories) {
-                targetCategories.add(entry.getKey());
-            }
-            targetCategories.add("PRODUCT_KNOWLEDGE"); // Always include system architecture, ledger, and operational docs!
-            for (RagKnowledgeBase doc : allDocs) {
-                String fname = doc.getSourceDocument();
+        for (RagKnowledgeBase doc : allDocs) {
+            String fname = doc.getSourceDocument();
+            if (fname != null) {
                 if (fname.contains(": ")) {
                     fname = fname.substring(fname.lastIndexOf(": ") + 2).trim();
                 }
-                String docCategory = getCategoryForFilename(fname.replace(".md", ""));
-                if (targetCategories.contains(docCategory) || targetCategories.contains(doc.getCategory())) {
-                    candidateDocs.add(doc);
+                boolean isTech = isTechnicalDocument(fname);
+                boolean isOps = isOperationsDocument(fname);
+                boolean isSupport = !isTech && !isOps;
+
+                switch (questionType) {
+                    case TECHNICAL:
+                        if (isTech) candidateDocs.add(doc);
+                        break;
+                    case OPERATIONS:
+                        if (isOps) candidateDocs.add(doc);
+                        break;
+                    case CUSTOMER_SUPPORT:
+                        if (isSupport) {
+                            if (!lowConfidenceFallback && !topCategories.isEmpty()) {
+                                Set<String> targetCategories = new HashSet<>();
+                                for (Map.Entry<String, Double> entry : topCategories) {
+                                    targetCategories.add(entry.getKey());
+                                }
+                                String docCategory = getCategoryForFilename(fname.replace(".md", ""));
+                                if (targetCategories.contains(docCategory) || targetCategories.contains(doc.getCategory())) {
+                                    candidateDocs.add(doc);
+                                }
+                            } else {
+                                candidateDocs.add(doc);
+                            }
+                        }
+                        break;
+                    case HYBRID:
+                        if (!lowConfidenceFallback && !topCategories.isEmpty()) {
+                            Set<String> targetCategories = new HashSet<>();
+                            for (Map.Entry<String, Double> entry : topCategories) {
+                                targetCategories.add(entry.getKey());
+                            }
+                            String docCategory = getCategoryForFilename(fname.replace(".md", ""));
+                            if (isTech || isOps || targetCategories.contains(docCategory) || targetCategories.contains(doc.getCategory())) {
+                                candidateDocs.add(doc);
+                            }
+                        } else {
+                            candidateDocs.add(doc);
+                        }
+                        break;
                 }
             }
         }
@@ -1931,6 +1965,55 @@ public class RagServiceImpl implements RagService {
             }
         }
         return null;
+    }
+
+    private enum QuestionType {
+        CUSTOMER_SUPPORT, TECHNICAL, OPERATIONS, HYBRID
+    }
+
+    private QuestionType classifyQuestionType(String q) {
+        boolean hasTechnicalKeywords = q.contains("port") || q.contains("docker") || q.contains("postgres") ||
+                q.contains("database") || q.contains("db") || q.contains("table") || q.contains("schema") ||
+                q.contains("class") || q.contains("api") || q.contains("route") || q.contains("endpoint") ||
+                q.contains("kafka") || q.contains("redis") || q.contains("spring") || q.contains("microservice") ||
+                q.contains("dependency") || q.contains("architecture");
+
+        boolean hasOperationsKeywords = q.contains("audit") || q.contains("inject") || q.contains("revenue") ||
+                q.contains("reconcile") || q.contains("reconciliation") || q.contains("cron") ||
+                q.contains("administrator") || q.contains("admin desk") || q.contains("operations") ||
+                q.contains("operational") || q.contains("variance") || q.contains("discrepancy") ||
+                q.contains("treasury health") || q.contains("yield reserve");
+
+        boolean hasSupportKeywords = q.contains("wallet") || q.contains("balance") || q.contains("interest") ||
+                q.contains("apy") || q.contains("cashback") || q.contains("reward") || q.contains("failed") ||
+                q.contains("transfer") || q.contains("deposit") || q.contains("withdraw") || q.contains("deactivate") ||
+                q.contains("delete") || q.contains("phone") || q.contains("kyc") || q.contains("pin") ||
+                q.contains("recharge") || q.contains("bill") || q.contains("goal") || q.contains("statement") ||
+                q.contains("receipt");
+
+        if (hasSupportKeywords && (hasTechnicalKeywords || hasOperationsKeywords)) {
+            return QuestionType.HYBRID;
+        } else if (hasTechnicalKeywords) {
+            return QuestionType.TECHNICAL;
+        } else if (hasOperationsKeywords) {
+            return QuestionType.OPERATIONS;
+        } else {
+            return QuestionType.CUSTOMER_SUPPORT;
+        }
+    }
+
+    private boolean isTechnicalDocument(String fname) {
+        if (fname == null) return false;
+        String name = fname.toLowerCase();
+        return name.contains("architecture") || name.contains("ledger") || name.contains("glossary");
+    }
+
+    private boolean isOperationsDocument(String fname) {
+        if (fname == null) return false;
+        String name = fname.toLowerCase();
+        return name.contains("audit") || name.contains("injection") || name.contains("revenue") ||
+                name.contains("reconciliation") || name.contains("workflow") || name.contains("admin") ||
+                name.contains("yield_distribution") || name.contains("yield_reserve");
     }
 
     private static class DocScorePair {
